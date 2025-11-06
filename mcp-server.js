@@ -7,11 +7,11 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
-const FEATURE_URL =
-  process.env.FEATURE_URL ||
-  "https://services8.arcgis.com/IS3r9gAO1V8yuCqO/ArcGIS/rest/services/OpenGov_Map_Service_WFL1/FeatureServer/0/query";
+const BASE_URL = "https://services8.arcgis.com/IS3r9gAO1V8yuCqO/ArcGIS/rest/services/OpenGov_Map_Service_WFL1/FeatureServer";
+const ZONING_LAYER = process.env.ZONING_LAYER || "24";
+const ADDRESS_LAYER = process.env.ADDRESS_LAYER || "6";
 
-async function lookupZoningDistrict(lat, lon) {
+async function lookupZoningByCoordinates(lat, lon) {
   if (typeof lat !== "number" || typeof lon !== "number") {
     throw new Error("lat and lon must be numbers");
   }
@@ -42,7 +42,7 @@ async function lookupZoningDistrict(lat, lon) {
     returnGeometry: "false",
   });
 
-  const url = `${FEATURE_URL}?${params.toString()}`;
+  const url = `${BASE_URL}/${ZONING_LAYER}/query?${params.toString()}`;
   
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
@@ -70,21 +70,115 @@ async function lookupZoningDistrict(lat, lon) {
     if (!feature) {
       return {
         found: false,
-        message: "No district found for that point.",
+        message: "No zoning district found for that location.",
       };
     }
 
     const attrs = feature.attributes || {};
     const district =
-      attrs.DISTRICT || attrs.ZONE || attrs.ZONING || attrs.District || "Unknown";
+      attrs.ACAD_TEXT || attrs.ZONE || attrs.ZONING || attrs.DISTRICT || attrs.District || attrs.NAME || "Unknown";
 
     return {
       found: true,
       district,
       attributes: attrs,
-      layerId: feature.layerId ?? 0,
-      source: "ArcGIS FeatureServer",
+      coordinates: { lat, lon },
+      source: "Lebanon Official Zoning Layer",
     };
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('Request timeout: ArcGIS server took too long to respond');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function lookupZoningByAddress(address) {
+  if (typeof address !== "string" || !address.trim()) {
+    throw new Error("address must be a non-empty string");
+  }
+
+  const addressUpper = address.toUpperCase().trim();
+  const escapedAddress = addressUpper.replace(/'/g, "''");
+  
+  const parts = addressUpper.split(/\s+/);
+  let whereClause;
+  
+  if (parts.length > 1 && /^\d/.test(parts[0])) {
+    const addressNumber = parts[0].replace(/'/g, "''");
+    const streetName = parts.slice(1).join(' ').replace(/'/g, "''");
+    whereClause = `UPPER(AddNo_Full) LIKE '%${addressNumber}%' AND UPPER(StNam_Full) LIKE '%${streetName}%'`;
+  } else {
+    whereClause = `UPPER(StNam_Full) LIKE '%${escapedAddress}%' OR UPPER(AddNo_Full) LIKE '%${escapedAddress}%'`;
+  }
+  
+  const params = new URLSearchParams({
+    f: "json",
+    where: whereClause,
+    outFields: "AddNo_Full,StNam_Full,d_gis_zone,Latitude,Longitude,Zip_Code,MATID",
+    returnGeometry: "false",
+    resultRecordCount: "10",
+  });
+
+  const url = `${BASE_URL}/${ADDRESS_LAYER}/query?${params.toString()}`;
+  
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+
+  try {
+    const resp = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeout);
+
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(`ArcGIS query failed: ${resp.status} - ${text}`);
+    }
+
+    const data = await resp.json();
+
+    if (data.error) {
+      throw new Error(`ArcGIS error: ${JSON.stringify(data.error)}`);
+    }
+
+    if (!Array.isArray(data.features) || data.features.length === 0) {
+      return {
+        found: false,
+        message: "No addresses found matching your search. Try using just the street name or number.",
+      };
+    }
+
+    const matches = data.features.map(feature => {
+      const attrs = feature.attributes || {};
+      return {
+        address: `${attrs.AddNo_Full || ''} ${attrs.StNam_Full || ''}`.trim(),
+        district: attrs.d_gis_zone || "Unknown",
+        coordinates: {
+          lat: attrs.Latitude,
+          lon: attrs.Longitude,
+        },
+        zipCode: attrs.Zip_Code,
+        matId: attrs.MATID,
+      };
+    });
+
+    if (matches.length === 1) {
+      return {
+        found: true,
+        ...matches[0],
+        source: "Lebanon Master Address Table",
+      };
+    } else {
+      return {
+        found: true,
+        multipleMatches: true,
+        count: matches.length,
+        matches: matches,
+        message: `Found ${matches.length} matching addresses. Please be more specific.`,
+        source: "Lebanon Master Address Table",
+      };
+    }
   } catch (err) {
     if (err.name === 'AbortError') {
       throw new Error('Request timeout: ArcGIS server took too long to respond');
@@ -98,7 +192,7 @@ async function lookupZoningDistrict(lat, lon) {
 const server = new Server(
   {
     name: "lebanon-zoning-lookup",
-    version: "1.0.0",
+    version: "2.0.0",
   },
   {
     capabilities: {
@@ -111,9 +205,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
-        name: "lookup_zoning_district",
+        name: "lookup_zoning_by_coordinates",
         description:
-          "Look up the zoning district for a location in Lebanon, NH using latitude and longitude coordinates. Returns the zoning district name and additional attributes from the ArcGIS FeatureServer.",
+          "Look up the zoning district for a location in Lebanon, NH using latitude and longitude coordinates. Returns the official zoning district from the Lebanon GIS Official Zoning layer.",
         inputSchema: {
           type: "object",
           properties: {
@@ -129,20 +223,41 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
           required: ["lat", "lon"],
         },
       },
+      {
+        name: "lookup_zoning_by_address",
+        description:
+          "Look up the zoning district for a location in Lebanon, NH using a street address. Searches the Lebanon Master Address Table and returns the zoning district along with the full address and coordinates. Returns multiple matches if the address is ambiguous.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            address: {
+              type: "string",
+              description: "Street address or partial address to search for (e.g., '123 Main Street', 'Main St', or just '123')",
+            },
+          },
+          required: ["address"],
+        },
+      },
     ],
   };
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  if (request.params.name !== "lookup_zoning_district") {
-    throw new Error(`Unknown tool: ${request.params.name}`);
-  }
-
-  const { lat, lon } = request.params.arguments;
+  const toolName = request.params.name;
 
   try {
-    const result = await lookupZoningDistrict(lat, lon);
-    
+    let result;
+
+    if (toolName === "lookup_zoning_by_coordinates") {
+      const { lat, lon } = request.params.arguments;
+      result = await lookupZoningByCoordinates(lat, lon);
+    } else if (toolName === "lookup_zoning_by_address") {
+      const { address } = request.params.arguments;
+      result = await lookupZoningByAddress(address);
+    } else {
+      throw new Error(`Unknown tool: ${toolName}`);
+    }
+
     return {
       content: [
         {
@@ -158,7 +273,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           type: "text",
           text: JSON.stringify({
             error: err.message,
-            example: { lat: 43.6426, lon: -72.2515 },
+            examples: {
+              coordinates: { lat: 43.6426, lon: -72.2515 },
+              address: "123 Main Street"
+            },
           }, null, 2),
         },
       ],
@@ -170,7 +288,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("Lebanon Zoning Lookup MCP Server running on stdio");
+  console.error("Lebanon Zoning Lookup MCP Server v2.0 running on stdio");
+  console.error(`Using Zoning Layer ${ZONING_LAYER} and Address Layer ${ADDRESS_LAYER}`);
 }
 
 main().catch((error) => {
