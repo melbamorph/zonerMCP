@@ -1,17 +1,21 @@
 {
   "name": "lebanon-zoning-lookup",
   "version": "1.0.0",
-  "description": "Node.js + Express server for Lebanon zoning district lookup via ArcGIS FeatureServer",
-  "main": "server.js",
+  "description": "MCP server for Lebanon, NH zoning district lookup - exposes AI tool for querying ArcGIS FeatureServer",
+  "type": "module",
+  "main": "mcp-server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "start": "node mcp-server.js",
+    "dev": "node mcp-server.js"
   },
   "keywords": [
+    "mcp",
+    "model-context-protocol",
     "zoning",
     "arcgis",
     "lebanon",
-    "geospatial"
+    "geospatial",
+    "ai-tool"
   ],
   "author": "",
   "license": "ISC",
