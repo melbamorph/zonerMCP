@@ -117,7 +117,7 @@ async function lookupZoningByAddress(address) {
   const params = new URLSearchParams({
     f: "json",
     where: whereClause,
-    outFields: "AddNo_Full,StNam_Full,d_gis_zone,Latitude,Longitude,Zip_Code,MATID",
+    outFields: "*",
     returnGeometry: "false",
     resultRecordCount: "10",
   });
@@ -158,8 +158,7 @@ async function lookupZoningByAddress(address) {
           lat: attrs.Latitude,
           lon: attrs.Longitude,
         },
-        zipCode: attrs.Zip_Code,
-        matId: attrs.MATID,
+        allAttributes: attrs,
       };
     });
 
