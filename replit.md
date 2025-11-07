@@ -3,9 +3,15 @@
 ## Overview
 A Model Context Protocol (MCP) server that provides zoning district lookup functionality for Lebanon, NH. This server exposes AI tools that can be used by Claude, ChatGPT, and other AI agents to query the Lebanon GIS system and retrieve zoning district information using either geographic coordinates or street addresses.
 
-**Current State**: Fully functional MCP server v2.0 with two tools: coordinate-based and address-based zoning lookups. Features comprehensive error handling, input validation, and timeout protection.
+**Current State**: Fully functional MCP server v2.1 with two tools: coordinate-based and address-based zoning lookups. Features comprehensive error handling, input validation, and timeout protection. All GIS layer fields are now exposed to AI agents for complete property data access.
 
 ## Recent Changes
+- **November 7, 2025**: Enhanced v2.1 - Full Field Access
+  - Updated both tools to return ALL available fields from Lebanon GIS layers
+  - Address lookups now include 27 fields: property owners, lot size, parcel IDs, utilities, and more
+  - Coordinate lookups return complete zoning layer attributes including acreage and boundaries
+  - All property data accessible to AI agents for comprehensive queries
+
 - **November 6, 2025**: Major update to v2.0
   - Fixed coordinate lookup to use correct layer (24 - Official_Zoning)
   - Added address-based lookup using Master Address Table (layer 6)
@@ -48,9 +54,36 @@ lebanon-zoning-lookup/
 ```
 
 ### Data Sources
-- **Layer 24 (Official_Zoning)**: Official zoning district polygons with designations in ACAD_TEXT field
-- **Layer 6 (Master Address Table)**: Complete address database with coordinates and zoning in d_gis_zone field
-- **Base URL**: `https://services8.arcgis.com/IS3r9gAO1V8yuCqO/ArcGIS/rest/services/OpenGov_Map_Service_WFL1/FeatureServer`
+
+**Layer 24 (Official_Zoning)** - 8 fields:
+- `OBJECTID`: Unique object identifier
+- `Text_`: Parcel text identifier
+- `maplot`: Map lot number
+- `ACAD_TEXT`: Zoning district code (e.g., "LD", "R3")
+- `ACRES`: Acreage of the zone
+- `F2017_CHANGE`: Flag for 2017 zoning changes
+- `Shape__Area`: Polygon area in square units
+- `Shape__Length`: Polygon perimeter length
+
+**Layer 6 (Master Address Table)** - 27 fields:
+- `OBJECTID`: Unique object identifier
+- `AddNo_Full`: Full address number (including suffixes like "14A")
+- `StNam_Full`: Full street name
+- `SubAddress`: Sub-address (apt/unit)
+- `County`, `Inc_Muni`, `Nbrhd_Comm`, `State`, `Zip_Code`: Location details
+- `Longitude`, `Latitude`: GPS coordinates
+- `Parcel_ID`: Tax parcel identifier
+- `MATID`: Master Address Table ID
+- `Sewer`, `Water`: Utility service information
+- `propertyid`: Property ID reference
+- `d_gis_lot_size`: Lot size in acres
+- `d_gis_zone`: Zoning district
+- `d_gis_owner1`, `d_gis_owner2`: Property owner names
+- `d_gis_own_addr1`, `d_gis_own_city`, `d_gis_own_state`, `d_gis_own_zip`: Owner address
+- `d_gis_ls_book`, `d_gis_ls_page`: Land sale book/page references
+- `D_GIS_PRC_USRFLD_02`: Additional parcel field
+
+**Base URL**: `https://services8.arcgis.com/IS3r9gAO1V8yuCqO/ArcGIS/rest/services/OpenGov_Map_Service_WFL1/FeatureServer`
 
 ## MCP Tools
 
@@ -127,8 +160,29 @@ Look up the zoning district for a location using a street address. Searches the 
     "lat": 43.64703254,
     "lon": -72.25890275
   },
-  "zipCode": "03766",
-  "matId": "{ED471DE2-3CFB-4130-9006-B42FB087DADE}",
+  "allAttributes": {
+    "OBJECTID": 123,
+    "AddNo_Full": "14",
+    "StNam_Full": "AMSDEN ST",
+    "SubAddress": null,
+    "County": "Grafton",
+    "Inc_Muni": "Lebanon",
+    "State": "NH",
+    "Zip_Code": "03766",
+    "Longitude": -72.25890275,
+    "Latitude": 43.64703254,
+    "Parcel_ID": "0077 0048 00000",
+    "MATID": "{ED471DE2-3CFB-4130-9006-B42FB087DADE}",
+    "Sewer": "Municipal Sewer",
+    "Water": "Municipal Water",
+    "propertyid": "...",
+    "d_gis_lot_size": 0.28,
+    "d_gis_zone": "R3",
+    "d_gis_owner1": "RANCOURT, WILLIAM",
+    "d_gis_owner2": null,
+    "d_gis_own_addr1": "...",
+    "...": "... (all 27 fields included)"
+  },
   "source": "Lebanon Master Address Table"
 }
 ```
@@ -147,8 +201,15 @@ Look up the zoning district for a location using a street address. Searches the 
         "lat": 43.65456668,
         "lon": -72.29464665
       },
-      "zipCode": "03784",
-      "matId": "{...}"
+      "allAttributes": {
+        "OBJECTID": 456,
+        "AddNo_Full": "81",
+        "StNam_Full": "CRAFTS HILL RD",
+        "d_gis_zone": "RL3",
+        "d_gis_lot_size": 2.5,
+        "d_gis_owner1": "SMITH, JOHN",
+        "...": "... (all 27 fields included)"
+      }
     }
   ],
   "message": "Found 10 matching addresses. Please be more specific.",

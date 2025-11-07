@@ -191,7 +191,7 @@ async function lookupZoningByAddress(address) {
 const server = new Server(
   {
     name: "lebanon-zoning-lookup",
-    version: "2.0.0",
+    version: "2.1.0",
   },
   {
     capabilities: {
@@ -287,7 +287,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("Lebanon Zoning Lookup MCP Server v2.0 running on stdio");
+  console.error("Lebanon Zoning Lookup MCP Server v2.1 running on stdio");
   console.error(`Using Zoning Layer ${ZONING_LAYER} and Address Layer ${ADDRESS_LAYER}`);
 }
 
