@@ -1,4 +1,4 @@
-# Lebanon, NH Zoning Lookup MCP Server
+# **EXPERIMENTAL** Zoning Lookup MCP Server
 
 A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that provides AI agents with real-time access to zoning district information for Lebanon, New Hampshire. Query by street address or GPS coordinates to retrieve official zoning designations, property details, lot sizes, and owner information from the Lebanon GIS system.
 
