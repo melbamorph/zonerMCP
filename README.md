@@ -315,7 +315,7 @@ ISC License - See [LICENSE](LICENSE) file for details
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/melbamorph/lebanon-zoning-lookup/issues)
+- **Issues**: [GitHub Issues](https://github.com/melbamorph/zonerMCP/issues)
 - **Lebanon GIS**: [City of Lebanon GIS](https://lebanonnh.gov/GIS)
 
 ---
