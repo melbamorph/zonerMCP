@@ -31,3 +31,8 @@ args = "npm start"
 [[ports]]
 localPort = 8080
 externalPort = 8080
+
+[deployment]
+run = ["sh", "-c", "node mcp-server.js"]
+deploymentTarget = "gce"
+ignorePorts = true
