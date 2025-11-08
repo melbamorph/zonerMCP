@@ -14,7 +14,6 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that pr
 
 🏘️ **Comprehensive Property Data**
 - Official zoning designations (LD, R3, RL2, RL3, GC, etc.)
-- Property owner information
 - Lot size in acres
 - Parcel IDs and tax map numbers
 - Utility service information (water, sewer)
