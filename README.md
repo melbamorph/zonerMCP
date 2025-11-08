@@ -261,7 +261,7 @@ All data is sourced from the **Lebanon, NH Official GIS System**:
 
 Base URL: `https://services8.arcgis.com/IS3r9gAO1V8yuCqO/ArcGIS/rest/services/OpenGov_Map_Service_WFL1/FeatureServer`
 
-This is public data provided by the Town of Lebanon, New Hampshire.
+This is public data provided by the City of Lebanon, New Hampshire.
 
 ## Lebanon Zoning Districts
 
@@ -319,16 +319,15 @@ ISC License - See [LICENSE](LICENSE) file for details
 
 ## Acknowledgments
 
-- Data provided by the Town of Lebanon, New Hampshire
+- Data provided by the City of Lebanon, New Hampshire
 - Built with the [Model Context Protocol SDK](https://github.com/modelcontextprotocol/typescript-sdk)
 - Inspired by the MCP community's mission to make data accessible to AI agents
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/lebanon-zoning-lookup/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/lebanon-zoning-lookup/discussions)
-- **Lebanon GIS**: [Town of Lebanon Website](https://www.lebnh.net/)
+- **Issues**: [GitHub Issues](https://github.com/melbamorph/lebanon-zoning-lookup/issues)
+- **Lebanon GIS**: [City of Lebanon Website](https://lebanonnh.gov/GIS)
 
 ---
 
-**Note**: This is an unofficial tool and is not affiliated with the Town of Lebanon, NH. All zoning data is sourced from publicly available GIS services. For official zoning determinations, please contact the Lebanon Planning Department.
+**Note**: This is an unofficial tool and is not affiliated with the City of Lebanon, NH. All zoning data is sourced from publicly available GIS services. For official zoning determinations, please contact the Lebanon Planning Department.
