@@ -3,9 +3,17 @@
 ## Overview
 A Model Context Protocol (MCP) server that provides zoning district lookup functionality for Lebanon, NH. This server exposes AI tools that can be used by Claude, ChatGPT, and other AI agents to query the Lebanon GIS system and retrieve zoning district information using either geographic coordinates or street addresses.
 
-**Current State**: Fully functional MCP server v2.1 with two tools: coordinate-based and address-based zoning lookups. Features comprehensive error handling, input validation, and timeout protection. All GIS layer fields are now exposed to AI agents for complete property data access.
+**Current State**: Fully functional MCP server v3.0.0 with HTTP/SSE transport for remote deployment and OpenAI integration. Two tools: coordinate-based and address-based zoning lookups. Features comprehensive error handling, input validation, and timeout protection. All GIS layer fields are now exposed to AI agents for complete property data access.
 
 ## Recent Changes
+- **November 8, 2025**: Major v3.0.0 - HTTP/SSE Transport for OpenAI
+  - Converted from stdio to SSE (Server-Sent Events) HTTP transport for cloud deployment
+  - Added Express web server on port 5000
+  - Compatible with OpenAI Agents SDK and Responses API
+  - Health check endpoint at /health
+  - SSE MCP endpoint at /sse
+  - Deployed as web server for remote AI agent access
+
 - **November 7, 2025**: Enhanced v2.1 - Full Field Access
   - Updated both tools to return ALL available fields from Lebanon GIS layers
   - Address lookups now include 27 fields: property owners, lot size, parcel IDs, utilities, and more
@@ -38,20 +46,27 @@ A Model Context Protocol (MCP) server that provides zoning district lookup funct
 ### Technology Stack
 - **Runtime**: Node.js 20 (ES Modules)
 - **Protocol**: Model Context Protocol (MCP)
-- **Transport**: stdio (standard input/output)
+- **Transport**: SSE (Server-Sent Events) over HTTP
+- **Web Server**: Express.js on port 5000
 - **Dependencies**:
   - `@modelcontextprotocol/sdk`: MCP server implementation
+  - `express`: HTTP server for SSE transport
 
 ### Project Structure
 ```
 lebanon-zoning-lookup/
-├── mcp-server.js           # Main MCP server (v2.0)
+├── mcp-server.js           # Main MCP server (v3.0.0)
 ├── test-mcp-client.js      # Test client for verification
 ├── package.json            # Project configuration
 ├── replit.md              # Project documentation
 └── reference/
     └── rest-api-server.js  # Original REST API (backup)
 ```
+
+### Endpoints
+- **SSE Connection**: `GET http://your-server:5000/sse` - Establishes SSE stream (server → client)
+- **Message Handler**: `POST http://your-server:5000/messages?sessionId=<id>` - Receives client messages (client → server)
+- **Health Check**: `GET http://your-server:5000/health` - Server status and active connections
 
 ### Data Sources
 
@@ -258,48 +273,81 @@ Look up the zoning district for a location using a street address. Searches the 
 npm start
 ```
 
-The server runs on stdio and waits for MCP client connections.
-
-### Testing the Server
-```bash
-node test-mcp-client.js
-```
-
-This test client verifies:
-- Tool discovery (lists both tools)
-- Coordinate lookup with valid/invalid inputs
-- Address lookup with exact match, partial match, and error cases
-- Proper error handling and validation
+The server starts an HTTP server on port 5000 with SSE transport for MCP connections.
 
 ## Using with AI Agents
 
-### Claude Desktop
-Add to your Claude Desktop MCP configuration (`~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+### OpenAI Agents SDK (Python)
 
-```json
-{
-  "mcpServers": {
-    "lebanon-zoning": {
-      "command": "node",
-      "args": ["/path/to/lebanon-zoning-lookup/mcp-server.js"]
-    }
-  }
-}
+**Installation:**
+```bash
+pip install openai-agents
 ```
 
-### Example Agent Usage
-Once configured, AI agents can use natural language:
+**Basic Usage:**
+```python
+import asyncio
+from agents import Agent, MCPServerSse, Runner
+
+async def main():
+    # Connect to the MCP server via SSE
+    async with MCPServerSse(
+        url="http://your-replit-url:5000/sse"
+    ) as server:
+        agent = Agent(
+            name="Zoning Assistant",
+            model="gpt-4",
+            mcp_servers=[server]
+        )
+        
+        result = await Runner.run(
+            agent,
+            "What's the zoning for 14 Amsden St in Lebanon, NH?"
+        )
+        
+        print(result.final_output)
+
+asyncio.run(main())
+```
+
+### OpenAI Responses API (Direct)
+
+**Using the Responses API with MCP:**
+```python
+from openai import OpenAI
+
+client = OpenAI()
+
+response = client.responses.create(
+    model="gpt-4.1",
+    tools=[
+        {
+            "type": "mcp",
+            "server_label": "lebanon_zoning",
+            "server_url": "http://your-replit-url:5000/sse",
+            "require_approval": "never"
+        }
+    ],
+    input="What is the zoning district for coordinates 43.6426, -72.2515?"
+)
+
+print(response.output_text)
+```
+
+### Example Queries
+Once connected, AI agents can use natural language:
 
 **Coordinate-based:**
 - "What's the zoning district for coordinates 43.6426, -72.2515?"
 - "Look up the zoning for latitude 43.64 and longitude -72.25"
 
 **Address-based:**
-- "What's the zoning for 123 Main Street in Lebanon, NH?"
+- "What's the zoning for 14 Amsden St in Lebanon, NH?"
 - "Look up zoning for Main Street"
 - "Find zoning districts on Maple Street"
+- "Show me property details for 81 Crafts Hill Rd"
 
-The agent will automatically choose the appropriate tool and interpret the results.
+The agent will automatically discover tools, choose the appropriate one, and interpret the results including all property data fields.
 
 ## Zoning Districts
 Common Lebanon zoning designations found in ACAD_TEXT field:
@@ -313,18 +361,28 @@ Common Lebanon zoning designations found in ACAD_TEXT field:
 ## Publishing Recommendations
 
 ### Deployment Type
-**Recommended**: VM Deployment (not Autoscale)
+**Recommended**: Autoscale Deployment
 
-### Why VM?
-- MCP servers use stdio transport, not HTTP
-- Need persistent process that AI clients can connect to
-- Stateless but requires continuous availability for agent connections
+### Why Autoscale?
+- MCP server runs as HTTP web service on port 5000
+- SSE transport is HTTP-based and works with autoscale
+- Stateless server - no persistent state to maintain
+- Cost-effective for intermittent AI agent requests
+- Automatically scales to zero when not in use
 
 ### Configuration
-- **Deployment Target**: VM
-- **Run Command**: `npm start`
+- **Deployment Target**: Autoscale
+- **Run Command**: `node mcp-server.js`
+- **Port**: 5000 (required for webview)
 - **No Database Required**: The server is stateless and queries Lebanon GIS in real-time
 - **No API Keys Required**: All data from public Lebanon GIS layers
+
+### After Publishing
+Your MCP server will be available at:
+- SSE endpoint: `https://your-repl-name.your-username.repl.co/sse`
+- Health check: `https://your-repl-name.your-username.repl.co/health`
+
+Use the SSE endpoint URL in your OpenAI Agents SDK or Responses API configuration.
 
 ## Development Notes
 

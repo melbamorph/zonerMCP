@@ -4,7 +4,7 @@ modules = ["nodejs-20"]
 channel = "stable-25_05"
 
 [workflows]
-runButton = "Server"
+runButton = "Project"
 
 [[workflows.workflow]]
 name = "Server"
@@ -17,10 +17,27 @@ outputType = "console"
 task = "shell.exec"
 args = "npm start"
 
+[[workflows.workflow]]
+name = "Server"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm start"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [deployment]
-run = ["npm", "install", "&&", "npm", "start"]
-deploymentTarget = "vm"
+run = ["node", "mcp-server.js"]
+deploymentTarget = "autoscale"
 
 [agent]
 expertMode = true
+
+[[ports]]
+localPort = 5000
+externalPort = 80
 

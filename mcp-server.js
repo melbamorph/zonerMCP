@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
+import express from "express";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -191,7 +192,7 @@ async function lookupZoningByAddress(address) {
 const server = new Server(
   {
     name: "lebanon-zoning-lookup",
-    version: "2.1.0",
+    version: "3.0.0",
   },
   {
     capabilities: {
@@ -284,14 +285,55 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("Lebanon Zoning Lookup MCP Server v2.1 running on stdio");
-  console.error(`Using Zoning Layer ${ZONING_LAYER} and Address Layer ${ADDRESS_LAYER}`);
-}
+const app = express();
+app.use(express.json());
 
-main().catch((error) => {
-  console.error("Server error:", error);
-  process.exit(1);
+const transports = new Map();
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', version: '3.0.0', activeConnections: transports.size });
+});
+
+app.get('/sse', async (req, res) => {
+  console.log('SSE connection request received');
+  
+  const transport = new SSEServerTransport('/messages', res);
+  
+  transports.set(transport.sessionId, transport);
+  console.log(`Transport created: ${transport.sessionId}`);
+  
+  res.on('close', () => {
+    console.log(`Connection closed: ${transport.sessionId}`);
+    transports.delete(transport.sessionId);
+  });
+  
+  await server.connect(transport);
+});
+
+app.post('/messages', async (req, res) => {
+  const sessionId = req.query.sessionId;
+  console.log(`POST /messages - Session: ${sessionId}`);
+  
+  const transport = transports.get(sessionId);
+  if (!transport) {
+    return res.status(400).json({
+      jsonrpc: '2.0',
+      error: {
+        code: -32000,
+        message: 'Invalid session. Please establish SSE connection first.'
+      },
+      id: null
+    });
+  }
+  
+  await transport.handlePostMessage(req, res, req.body);
+});
+
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Lebanon Zoning Lookup MCP Server v3.0.0 running on port ${PORT}`);
+  console.log(`Using Zoning Layer ${ZONING_LAYER} and Address Layer ${ADDRESS_LAYER}`);
+  console.log(`SSE endpoint: http://0.0.0.0:${PORT}/sse`);
+  console.log(`Health check: http://0.0.0.0:${PORT}/health`);
 });
