@@ -17,7 +17,6 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that pr
 - Lot size in acres
 - Parcel IDs and tax map numbers
 - Utility service information (water, sewer)
-- Land sale records
 
 🔓 **No API Key Required**
 - Queries Lebanon's public ArcGIS FeatureServer directly
