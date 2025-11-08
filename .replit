@@ -33,6 +33,6 @@ localPort = 8080
 externalPort = 8080
 
 [deployment]
-run = ["sh", "-c", "node mcp-server.js"]
-deploymentTarget = "gce"
+run = ["node", "mcp-server.js"]
+deploymentTarget = "vm"
 ignorePorts = true
