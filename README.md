@@ -253,16 +253,6 @@ ADDRESS_LAYER=6             # ArcGIS layer for addresses
 - `POST /messages?sessionId=<id>` - Receives client messages
 - `GET /health` - Server health check
 
-## Data Source
-
-All data is sourced from the **Lebanon, NH Official GIS System**:
-- Layer 24: Official Zoning Districts
-- Layer 6: Master Address Table
-
-Base URL: `https://services8.arcgis.com/IS3r9gAO1V8yuCqO/ArcGIS/rest/services/OpenGov_Map_Service_WFL1/FeatureServer`
-
-This is public data provided by the City of Lebanon, New Hampshire.
-
 ## Lebanon Zoning Districts
 
 Common zoning designations:
