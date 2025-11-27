@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import express from "express";
+import cors from "cors";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import {
@@ -11,6 +12,9 @@ import {
 const BASE_URL = "https://services8.arcgis.com/IS3r9gAO1V8yuCqO/ArcGIS/rest/services/OpenGov_Map_Service_WFL1/FeatureServer";
 const ZONING_LAYER = process.env.ZONING_LAYER || "24";
 const ADDRESS_LAYER = process.env.ADDRESS_LAYER || "6";
+
+// Keep-alive interval for SSE connections (15 seconds)
+const KEEP_ALIVE_INTERVAL = 15000;
 
 async function lookupZoningByCoordinates(lat, lon) {
   if (typeof lat !== "number" || typeof lon !== "number") {
@@ -286,36 +290,90 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 const app = express();
+
+// Enable CORS for all origins (required for OpenAI agent connections)
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Cache-Control'],
+  credentials: false
+}));
+
 app.use(express.json());
 
+// Store transports and their keep-alive intervals
 const transports = new Map();
+const keepAliveIntervals = new Map();
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: '3.0.0', activeConnections: transports.size });
+  res.json({ 
+    status: 'ok', 
+    version: '3.1.0', 
+    activeConnections: transports.size,
+    timestamp: new Date().toISOString()
+  });
 });
 
 app.get('/sse', async (req, res) => {
-  console.log('SSE connection request received');
+  const clientInfo = req.headers['user-agent'] || 'unknown';
+  console.log(`[${new Date().toISOString()}] SSE connection request from: ${clientInfo}`);
+  
+  // Set headers for SSE with keep-alive
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
   
   const transport = new SSEServerTransport('/messages', res);
+  const sessionId = transport.sessionId;
   
-  transports.set(transport.sessionId, transport);
-  console.log(`Transport created: ${transport.sessionId}`);
+  transports.set(sessionId, transport);
+  console.log(`[${new Date().toISOString()}] Transport created: ${sessionId}`);
+  
+  // Set up keep-alive ping to prevent connection timeout
+  const keepAliveId = setInterval(() => {
+    try {
+      if (!res.writableEnded) {
+        res.write(': ping\n\n');
+        console.log(`[${new Date().toISOString()}] Keep-alive ping sent: ${sessionId}`);
+      }
+    } catch (err) {
+      console.error(`[${new Date().toISOString()}] Keep-alive error for ${sessionId}:`, err.message);
+      clearInterval(keepAliveId);
+    }
+  }, KEEP_ALIVE_INTERVAL);
+  
+  keepAliveIntervals.set(sessionId, keepAliveId);
   
   res.on('close', () => {
-    console.log(`Connection closed: ${transport.sessionId}`);
-    transports.delete(transport.sessionId);
+    console.log(`[${new Date().toISOString()}] Connection closed: ${sessionId}`);
+    clearInterval(keepAliveIntervals.get(sessionId));
+    keepAliveIntervals.delete(sessionId);
+    transports.delete(sessionId);
   });
   
-  await server.connect(transport);
+  res.on('error', (err) => {
+    console.error(`[${new Date().toISOString()}] SSE error for ${sessionId}:`, err.message);
+    clearInterval(keepAliveIntervals.get(sessionId));
+    keepAliveIntervals.delete(sessionId);
+    transports.delete(sessionId);
+  });
+  
+  try {
+    await server.connect(transport);
+    console.log(`[${new Date().toISOString()}] Server connected for session: ${sessionId}`);
+  } catch (err) {
+    console.error(`[${new Date().toISOString()}] Server connection error:`, err.message);
+  }
 });
 
 app.post('/messages', async (req, res) => {
   const sessionId = req.query.sessionId;
-  console.log(`POST /messages - Session: ${sessionId}`);
+  console.log(`[${new Date().toISOString()}] POST /messages - Session: ${sessionId}`);
+  console.log(`[${new Date().toISOString()}] Request body:`, JSON.stringify(req.body));
   
   const transport = transports.get(sessionId);
   if (!transport) {
+    console.error(`[${new Date().toISOString()}] Invalid session: ${sessionId}. Active sessions: ${Array.from(transports.keys()).join(', ')}`);
     return res.status(400).json({
       jsonrpc: '2.0',
       error: {
@@ -326,14 +384,31 @@ app.post('/messages', async (req, res) => {
     });
   }
   
-  await transport.handlePostMessage(req, res, req.body);
+  try {
+    await transport.handlePostMessage(req, res, req.body);
+    console.log(`[${new Date().toISOString()}] Message handled for session: ${sessionId}`);
+  } catch (err) {
+    console.error(`[${new Date().toISOString()}] Error handling message for ${sessionId}:`, err.message);
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32603,
+          message: `Internal error: ${err.message}`
+        },
+        id: req.body?.id || null
+      });
+    }
+  }
 });
 
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Lebanon Zoning Lookup MCP Server v3.0.0 running on port ${PORT}`);
-  console.log(`Using Zoning Layer ${ZONING_LAYER} and Address Layer ${ADDRESS_LAYER}`);
-  console.log(`SSE endpoint: http://0.0.0.0:${PORT}/sse`);
-  console.log(`Health check: http://0.0.0.0:${PORT}/health`);
+  console.log(`[${new Date().toISOString()}] Lebanon Zoning Lookup MCP Server v3.1.0 running on port ${PORT}`);
+  console.log(`[${new Date().toISOString()}] Using Zoning Layer ${ZONING_LAYER} and Address Layer ${ADDRESS_LAYER}`);
+  console.log(`[${new Date().toISOString()}] SSE endpoint: http://0.0.0.0:${PORT}/sse`);
+  console.log(`[${new Date().toISOString()}] Health check: http://0.0.0.0:${PORT}/health`);
+  console.log(`[${new Date().toISOString()}] CORS enabled for all origins`);
+  console.log(`[${new Date().toISOString()}] Keep-alive ping interval: ${KEEP_ALIVE_INTERVAL}ms`);
 });
