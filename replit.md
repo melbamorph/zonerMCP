@@ -3,9 +3,17 @@
 ## Overview
 A Model Context Protocol (MCP) server that provides zoning district lookup functionality for Lebanon, NH. This server exposes AI tools that can be used by Claude, ChatGPT, and other AI agents to query the Lebanon GIS system and retrieve zoning district information using either geographic coordinates or street addresses.
 
-**Current State**: Fully functional MCP server v3.0.0 with HTTP/SSE transport for remote deployment and OpenAI integration. Two tools: coordinate-based and address-based zoning lookups. Features comprehensive error handling, input validation, and timeout protection. All GIS layer fields are now exposed to AI agents for complete property data access.
+**Current State**: Fully functional MCP server v3.1.0 with HTTP/SSE transport for remote deployment and OpenAI integration. Two tools: coordinate-based and address-based zoning lookups. Features comprehensive error handling, input validation, timeout protection, CORS support, and SSE keep-alive pings. All GIS layer fields are now exposed to AI agents for complete property data access.
 
 ## Recent Changes
+- **November 27, 2025**: Stability update v3.1.0 - Connection Reliability
+  - Added CORS headers to allow OpenAI agent connections from any origin
+  - Added SSE keep-alive pings (every 15 seconds) to prevent connection timeouts
+  - Fixed "Session terminated" error (code 32600) during address lookups
+  - Improved error handling with timestamped logging for debugging
+  - Added session error recovery and better cleanup on disconnect
+  - Added `cors` package dependency
+
 - **November 8, 2025**: Major v3.0.0 - HTTP/SSE Transport for OpenAI
   - Converted from stdio to SSE (Server-Sent Events) HTTP transport for cloud deployment
   - Added Express web server on port 5000
@@ -51,11 +59,12 @@ A Model Context Protocol (MCP) server that provides zoning district lookup funct
 - **Dependencies**:
   - `@modelcontextprotocol/sdk`: MCP server implementation
   - `express`: HTTP server for SSE transport
+  - `cors`: Cross-origin resource sharing middleware
 
 ### Project Structure
 ```
 lebanon-zoning-lookup/
-├── mcp-server.js           # Main MCP server (v3.0.0)
+├── mcp-server.js           # Main MCP server (v3.1.0)
 ├── test-mcp-client.js      # Test client for verification
 ├── package.json            # Project configuration
 ├── replit.md              # Project documentation
