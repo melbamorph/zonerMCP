@@ -191,110 +191,117 @@ async function lookupZoningByAddress(address) {
   }
 }
 
-const server = new Server(
-  {
-    name: "lebanon-zoning-lookup",
-    version: "3.0.0",
-  },
-  {
-    capabilities: {
-      tools: {},
+// Helper function to create and configure an MCP server instance
+function createMcpServer() {
+  const mcpServer = new Server(
+    {
+      name: "lebanon-zoning-lookup",
+      version: "3.2.0",
     },
-  }
-);
-
-server.setRequestHandler(ListToolsRequestSchema, async () => {
-  return {
-    tools: [
-      {
-        name: "lookup_zoning_by_coordinates",
-        description:
-          "Look up the zoning district for a location in Lebanon, NH using latitude and longitude coordinates. Returns the official zoning district from the Lebanon GIS Official Zoning layer.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            lat: {
-              type: "number",
-              description: "Latitude coordinate (between -90 and 90)",
-            },
-            lon: {
-              type: "number",
-              description: "Longitude coordinate (between -180 and 180)",
-            },
-          },
-          required: ["lat", "lon"],
-        },
+    {
+      capabilities: {
+        tools: {},
       },
-      {
-        name: "lookup_zoning_by_address",
-        description:
-          "Look up the zoning district for a location in Lebanon, NH using a street address. Searches the Lebanon Master Address Table and returns the zoning district along with the full address and coordinates. Returns multiple matches if the address is ambiguous.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            address: {
-              type: "string",
-              description: "Street address or partial address to search for (e.g., '123 Main Street', 'Main St', or just '123')",
-            },
-          },
-          required: ["address"],
-        },
-      },
-    ],
-  };
-});
-
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
-  const toolName = request.params.name;
-
-  try {
-    let result;
-
-    if (toolName === "lookup_zoning_by_coordinates") {
-      const { lat, lon } = request.params.arguments;
-      result = await lookupZoningByCoordinates(lat, lon);
-    } else if (toolName === "lookup_zoning_by_address") {
-      const { address } = request.params.arguments;
-      result = await lookupZoningByAddress(address);
-    } else {
-      throw new Error(`Unknown tool: ${toolName}`);
     }
+  );
 
+  mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
     return {
-      content: [
+      tools: [
         {
-          type: "text",
-          text: JSON.stringify(result, null, 2),
-        },
-      ],
-    };
-  } catch (err) {
-    return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify({
-            error: err.message,
-            examples: {
-              coordinates: { lat: 43.6426, lon: -72.2515 },
-              address: "123 Main Street"
+          name: "lookup_zoning_by_coordinates",
+          description:
+            "Look up the zoning district for a location in Lebanon, NH using latitude and longitude coordinates. Returns the official zoning district from the Lebanon GIS Official Zoning layer.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              lat: {
+                type: "number",
+                description: "Latitude coordinate (between -90 and 90)",
+              },
+              lon: {
+                type: "number",
+                description: "Longitude coordinate (between -180 and 180)",
+              },
             },
-          }, null, 2),
+            required: ["lat", "lon"],
+          },
+        },
+        {
+          name: "lookup_zoning_by_address",
+          description:
+            "Look up the zoning district for a location in Lebanon, NH using a street address. Searches the Lebanon Master Address Table and returns the zoning district along with the full address and coordinates. Returns multiple matches if the address is ambiguous.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              address: {
+                type: "string",
+                description: "Street address or partial address to search for (e.g., '123 Main Street', 'Main St', or just '123')",
+              },
+            },
+            required: ["address"],
+          },
         },
       ],
-      isError: true,
     };
-  }
-});
+  });
+
+  mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const toolName = request.params.name;
+
+    try {
+      let result;
+
+      if (toolName === "lookup_zoning_by_coordinates") {
+        const { lat, lon } = request.params.arguments;
+        result = await lookupZoningByCoordinates(lat, lon);
+      } else if (toolName === "lookup_zoning_by_address") {
+        const { address } = request.params.arguments;
+        result = await lookupZoningByAddress(address);
+      } else {
+        throw new Error(`Unknown tool: ${toolName}`);
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify(result, null, 2),
+          },
+        ],
+      };
+    } catch (err) {
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              error: err.message,
+              examples: {
+                coordinates: { lat: 43.6426, lon: -72.2515 },
+                address: "123 Main Street"
+              },
+            }, null, 2),
+          },
+        ],
+        isError: true,
+      };
+    }
+  });
+
+  return mcpServer;
+}
 
 const app = express();
 
-// Enable CORS for all origins (required for OpenAI agent connections)
+// Enable CORS for all origins (required for OpenAI agent connections and MCP Inspector)
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Cache-Control', 'mcp-session-id'],
-  exposedHeaders: ['mcp-session-id'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Cache-Control', 'mcp-session-id', 'last-event-id'],
+  exposedHeaders: ['mcp-session-id', 'last-event-id', 'mcp-protocol-version'],
   credentials: false
 }));
 
@@ -329,32 +336,47 @@ app.post('/mcp', async (req, res) => {
       await transport.handleRequest(req, res, req.body);
       return;
     }
-
-    // For new sessions or stateless requests, create a new transport
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => randomUUID(),
-    });
-
-    // Clean up transport when closed
-    transport.onclose = () => {
-      const sid = transport.sessionId;
-      if (sid && transports.has(sid)) {
-        console.log(`[${new Date().toISOString()}] Transport closed: ${sid}`);
-        transports.delete(sid);
-      }
-    };
-
-    // Connect the MCP server to this transport
-    await server.connect(transport);
     
-    // Store the transport for future requests in this session
-    if (transport.sessionId) {
-      transports.set(transport.sessionId, transport);
-      console.log(`[${new Date().toISOString()}] New session created: ${transport.sessionId}`);
-    }
+    // New session - only allowed if no session ID provided (initialization request)
+    if (!sessionId) {
+      // Create a new MCP server instance for this session
+      const sessionServer = createMcpServer();
 
-    // Handle the request
-    await transport.handleRequest(req, res, req.body);
+      // Create new transport with session initialization callback
+      const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID(),
+        onsessioninitialized: (newSessionId) => {
+          console.log(`[${new Date().toISOString()}] Session initialized: ${newSessionId}`);
+          transports.set(newSessionId, transport);
+        }
+      });
+
+      // Set up cleanup when server closes
+      sessionServer.onclose = async () => {
+        const sid = transport.sessionId;
+        if (sid && transports.has(sid)) {
+          console.log(`[${new Date().toISOString()}] Transport closed for session ${sid}`);
+          transports.delete(sid);
+        }
+      };
+
+      // Connect the transport to the MCP server BEFORE handling the request
+      await sessionServer.connect(transport);
+
+      // Handle the request
+      await transport.handleRequest(req, res, req.body);
+      return;
+    }
+    
+    // Invalid request - has session ID but no matching transport
+    res.status(400).json({
+      jsonrpc: '2.0',
+      error: {
+        code: -32000,
+        message: 'Bad Request: No valid session ID provided',
+      },
+      id: req.body?.id ?? null
+    });
     
   } catch (err) {
     console.error(`[${new Date().toISOString()}] Error handling /mcp request:`, err.message);
@@ -373,13 +395,28 @@ app.post('/mcp', async (req, res) => {
   }
 });
 
-// Handle GET requests to /mcp for SSE streams (optional, for clients that need it)
+// Handle GET requests to /mcp for SSE streams (for clients that need server-initiated messages)
 app.get('/mcp', async (req, res) => {
+  console.log(`[${new Date().toISOString()}] ========== GET /mcp ==========`);
   const sessionId = req.headers['mcp-session-id'];
   
   if (!sessionId || !transports.has(sessionId)) {
-    res.status(400).json({ error: 'Invalid or missing session ID' });
+    res.status(400).json({
+      jsonrpc: '2.0',
+      error: {
+        code: -32000,
+        message: 'Bad Request: No valid session ID provided',
+      },
+      id: null
+    });
     return;
+  }
+
+  const lastEventId = req.headers['last-event-id'];
+  if (lastEventId) {
+    console.log(`[${new Date().toISOString()}] Client reconnecting with Last-Event-ID: ${lastEventId}`);
+  } else {
+    console.log(`[${new Date().toISOString()}] Establishing SSE stream for session: ${sessionId}`);
   }
 
   const transport = transports.get(sessionId);
@@ -389,15 +426,36 @@ app.get('/mcp', async (req, res) => {
 // Handle DELETE requests to /mcp for session cleanup
 app.delete('/mcp', async (req, res) => {
   const sessionId = req.headers['mcp-session-id'];
+  console.log(`[${new Date().toISOString()}] ========== DELETE /mcp ==========`);
+  console.log(`[${new Date().toISOString()}] Session ID: ${sessionId}`);
   
-  if (sessionId && transports.has(sessionId)) {
+  if (!sessionId || !transports.has(sessionId)) {
+    res.status(400).json({
+      jsonrpc: '2.0',
+      error: {
+        code: -32000,
+        message: 'Bad Request: No valid session ID provided',
+      },
+      id: null
+    });
+    return;
+  }
+
+  try {
     const transport = transports.get(sessionId);
-    await transport.close();
-    transports.delete(sessionId);
-    console.log(`[${new Date().toISOString()}] Session deleted: ${sessionId}`);
-    res.status(200).json({ message: 'Session closed' });
-  } else {
-    res.status(404).json({ error: 'Session not found' });
+    await transport.handleRequest(req, res);
+  } catch (err) {
+    console.error(`[${new Date().toISOString()}] Error handling session termination:`, err.message);
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32603,
+          message: 'Error handling session termination',
+        },
+        id: null
+      });
+    }
   }
 });
 
