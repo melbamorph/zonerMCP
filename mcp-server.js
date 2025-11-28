@@ -2,8 +2,9 @@
 
 import express from "express";
 import cors from "cors";
+import { randomUUID } from "node:crypto";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -12,9 +13,6 @@ import {
 const BASE_URL = "https://services8.arcgis.com/IS3r9gAO1V8yuCqO/ArcGIS/rest/services/OpenGov_Map_Service_WFL1/FeatureServer";
 const ZONING_LAYER = process.env.ZONING_LAYER || "24";
 const ADDRESS_LAYER = process.env.ADDRESS_LAYER || "6";
-
-// Keep-alive interval for SSE connections (15 seconds)
-const KEEP_ALIVE_INTERVAL = 15000;
 
 async function lookupZoningByCoordinates(lat, lon) {
   if (typeof lat !== "number" || typeof lon !== "number") {
