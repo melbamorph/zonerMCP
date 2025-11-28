@@ -300,7 +300,7 @@ app.use(cors({
   methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
   preflightContinue: false,
   optionsSuccessStatus: 204,
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Cache-Control', 'mcp-session-id', 'last-event-id'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Cache-Control', 'mcp-session-id', 'last-event-id', 'mcp-protocol-version'],
   exposedHeaders: ['mcp-session-id', 'last-event-id', 'mcp-protocol-version'],
   credentials: false
 }));
