@@ -292,285 +292,121 @@ const app = express();
 // Enable CORS for all origins (required for OpenAI agent connections)
 app.use(cors({
   origin: '*',
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Cache-Control'],
+  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'Cache-Control', 'mcp-session-id'],
+  exposedHeaders: ['mcp-session-id'],
   credentials: false
 }));
 
 app.use(express.json());
 
-// Store transports and their keep-alive intervals
+// Store transports by session ID for stateful connections
 const transports = new Map();
-const keepAliveIntervals = new Map();
 
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
-    version: '3.1.0', 
+    version: '3.2.0', 
     activeConnections: transports.size,
     timestamp: new Date().toISOString()
   });
 });
 
-app.get('/sse', async (req, res) => {
+// Streamable HTTP MCP endpoint
+app.post('/mcp', async (req, res) => {
   const clientInfo = req.headers['user-agent'] || 'unknown';
-  console.log(`[${new Date().toISOString()}] SSE connection request from: ${clientInfo}`);
+  const sessionId = req.headers['mcp-session-id'];
   
-  // Set headers for SSE with keep-alive
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no');
-  
-  const transport = new SSEServerTransport('/messages', res);
-  const sessionId = transport.sessionId;
-  
-  transports.set(sessionId, transport);
-  console.log(`[${new Date().toISOString()}] Transport created: ${sessionId}`);
-  
-  // Set up keep-alive ping to prevent connection timeout
-  const keepAliveId = setInterval(() => {
-    try {
-      if (!res.writableEnded) {
-        res.write(': ping\n\n');
-        console.log(`[${new Date().toISOString()}] Keep-alive ping sent: ${sessionId}`);
-      }
-    } catch (err) {
-      console.error(`[${new Date().toISOString()}] Keep-alive error for ${sessionId}:`, err.message);
-      clearInterval(keepAliveId);
-    }
-  }, KEEP_ALIVE_INTERVAL);
-  
-  keepAliveIntervals.set(sessionId, keepAliveId);
-  
-  res.on('close', () => {
-    console.log(`[${new Date().toISOString()}] Connection closed: ${sessionId}`);
-    clearInterval(keepAliveIntervals.get(sessionId));
-    keepAliveIntervals.delete(sessionId);
-    transports.delete(sessionId);
-  });
-  
-  res.on('error', (err) => {
-    console.error(`[${new Date().toISOString()}] SSE error for ${sessionId}:`, err.message);
-    clearInterval(keepAliveIntervals.get(sessionId));
-    keepAliveIntervals.delete(sessionId);
-    transports.delete(sessionId);
-  });
-  
+  console.log(`[${new Date().toISOString()}] ========== POST /mcp ==========`);
+  console.log(`[${new Date().toISOString()}] Client: ${clientInfo}`);
+  console.log(`[${new Date().toISOString()}] Session ID: ${sessionId || 'new session'}`);
+  console.log(`[${new Date().toISOString()}] Request body:`, JSON.stringify(req.body, null, 2));
+
   try {
+    // Check if this is an existing session
+    if (sessionId && transports.has(sessionId)) {
+      const transport = transports.get(sessionId);
+      await transport.handleRequest(req, res, req.body);
+      return;
+    }
+
+    // For new sessions or stateless requests, create a new transport
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+    });
+
+    // Clean up transport when closed
+    transport.onclose = () => {
+      const sid = transport.sessionId;
+      if (sid && transports.has(sid)) {
+        console.log(`[${new Date().toISOString()}] Transport closed: ${sid}`);
+        transports.delete(sid);
+      }
+    };
+
+    // Connect the MCP server to this transport
     await server.connect(transport);
-    console.log(`[${new Date().toISOString()}] Server connected for session: ${sessionId}`);
+    
+    // Store the transport for future requests in this session
+    if (transport.sessionId) {
+      transports.set(transport.sessionId, transport);
+      console.log(`[${new Date().toISOString()}] New session created: ${transport.sessionId}`);
+    }
+
+    // Handle the request
+    await transport.handleRequest(req, res, req.body);
+    
   } catch (err) {
-    console.error(`[${new Date().toISOString()}] Server connection error:`, err.message);
+    console.error(`[${new Date().toISOString()}] Error handling /mcp request:`, err.message);
+    console.error(`[${new Date().toISOString()}] Stack:`, err.stack);
+    
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32603,
+          message: `Internal error: ${err.message}`
+        },
+        id: req.body?.id ?? null
+      });
+    }
   }
 });
 
-async function handleJsonRpcRequest(req, res) {
-  const sessionId = req.query.sessionId;
-  const requestId = req.body?.id;
-  const method = req.body?.method;
+// Handle GET requests to /mcp for SSE streams (optional, for clients that need it)
+app.get('/mcp', async (req, res) => {
+  const sessionId = req.headers['mcp-session-id'];
   
-  console.log(`[${new Date().toISOString()}] ========== POST /messages ==========`);
-  console.log(`[${new Date().toISOString()}] Session: ${sessionId || 'stateless'}`);
-  console.log(`[${new Date().toISOString()}] Method: ${method}`);
-  console.log(`[${new Date().toISOString()}] Request ID: ${requestId}`);
-  console.log(`[${new Date().toISOString()}] Full Request Body:`, JSON.stringify(req.body, null, 2));
-  
-  if (!req.body || typeof req.body !== 'object') {
-    const errorResponse = {
-      jsonrpc: '2.0',
-      error: {
-        code: -32600,
-        message: 'Invalid Request: Request body must be a valid JSON object'
-      },
-      id: null
-    };
-    console.log(`[${new Date().toISOString()}] Response (parse error):`, JSON.stringify(errorResponse, null, 2));
-    return res.status(400).json(errorResponse);
+  if (!sessionId || !transports.has(sessionId)) {
+    res.status(400).json({ error: 'Invalid or missing session ID' });
+    return;
   }
-  
-  if (req.body.jsonrpc !== '2.0') {
-    const errorResponse = {
-      jsonrpc: '2.0',
-      error: {
-        code: -32600,
-        message: 'Invalid Request: Missing or invalid jsonrpc version (must be "2.0")'
-      },
-      id: requestId ?? null
-    };
-    console.log(`[${new Date().toISOString()}] Response (version error):`, JSON.stringify(errorResponse, null, 2));
-    return res.status(400).json(errorResponse);
-  }
-  
-  if (!method || typeof method !== 'string') {
-    const errorResponse = {
-      jsonrpc: '2.0',
-      error: {
-        code: -32600,
-        message: 'Invalid Request: Missing or invalid method'
-      },
-      id: requestId ?? null
-    };
-    console.log(`[${new Date().toISOString()}] Response (method error):`, JSON.stringify(errorResponse, null, 2));
-    return res.status(400).json(errorResponse);
-  }
-  
-  try {
-    let result;
-    
-    if (method === 'tools/list') {
-      result = {
-        tools: [
-          {
-            name: "lookup_zoning_by_coordinates",
-            description: "Look up the zoning district for a location in Lebanon, NH using latitude and longitude coordinates. Returns the official zoning district from the Lebanon GIS Official Zoning layer.",
-            inputSchema: {
-              type: "object",
-              properties: {
-                lat: {
-                  type: "number",
-                  description: "Latitude coordinate (between -90 and 90)"
-                },
-                lon: {
-                  type: "number",
-                  description: "Longitude coordinate (between -180 and 180)"
-                }
-              },
-              required: ["lat", "lon"]
-            }
-          },
-          {
-            name: "lookup_zoning_by_address",
-            description: "Look up the zoning district for a location in Lebanon, NH using a street address. Searches the Lebanon Master Address Table and returns the zoning district along with the full address and coordinates.",
-            inputSchema: {
-              type: "object",
-              properties: {
-                address: {
-                  type: "string",
-                  description: "Street address or partial address to search for (e.g., '123 Main Street', 'Main St', or just '123')"
-                }
-              },
-              required: ["address"]
-            }
-          }
-        ]
-      };
-    } else if (method === 'tools/call') {
-      const params = req.body.params || {};
-      const toolName = params.name;
-      const toolArgs = params.arguments || {};
-      
-      console.log(`[${new Date().toISOString()}] Tool call: ${toolName}`);
-      console.log(`[${new Date().toISOString()}] Tool arguments:`, JSON.stringify(toolArgs, null, 2));
-      
-      try {
-        let toolResult;
-        
-        if (toolName === 'lookup_zoning_by_coordinates') {
-          const { lat, lon } = toolArgs;
-          toolResult = await lookupZoningByCoordinates(lat, lon);
-        } else if (toolName === 'lookup_zoning_by_address') {
-          const { address } = toolArgs;
-          toolResult = await lookupZoningByAddress(address);
-        } else {
-          throw new Error(`Unknown tool: ${toolName}`);
-        }
-        
-        result = {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(toolResult, null, 2)
-            }
-          ]
-        };
-      } catch (toolErr) {
-        result = {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify({
-                error: toolErr.message,
-                examples: {
-                  coordinates: { lat: 43.6426, lon: -72.2515 },
-                  address: '123 Main Street'
-                }
-              }, null, 2)
-            }
-          ],
-          isError: true
-        };
-      }
-    } else if (method === 'initialize') {
-      result = {
-        protocolVersion: '2024-11-05',
-        capabilities: {
-          tools: {}
-        },
-        serverInfo: {
-          name: 'lebanon-zoning-lookup',
-          version: '3.2.0'
-        }
-      };
-    } else if (method === 'notifications/initialized') {
-      if (requestId === undefined) {
-        console.log(`[${new Date().toISOString()}] Notification received (no response needed)`);
-        console.log(`[${new Date().toISOString()}] ========== END /messages ==========`);
-        return res.status(204).send();
-      }
-      const successResponse = {
-        jsonrpc: '2.0',
-        result: {},
-        id: requestId
-      };
-      console.log(`[${new Date().toISOString()}] Response (notification ack):`, JSON.stringify(successResponse, null, 2));
-      return res.json(successResponse);
-    } else {
-      const errorResponse = {
-        jsonrpc: '2.0',
-        error: {
-          code: -32601,
-          message: `Method not found: ${method}`
-        },
-        id: requestId
-      };
-      console.log(`[${new Date().toISOString()}] Response (method not found):`, JSON.stringify(errorResponse, null, 2));
-      return res.status(404).json(errorResponse);
-    }
-    
-    const successResponse = {
-      jsonrpc: '2.0',
-      result: result,
-      id: requestId
-    };
-    console.log(`[${new Date().toISOString()}] Response (success):`, JSON.stringify(successResponse, null, 2));
-    console.log(`[${new Date().toISOString()}] ========== END /messages ==========`);
-    return res.json(successResponse);
-    
-  } catch (err) {
-    console.error(`[${new Date().toISOString()}] Error handling message:`, err.message);
-    console.error(`[${new Date().toISOString()}] Stack:`, err.stack);
-    const errorResponse = {
-      jsonrpc: '2.0',
-      error: {
-        code: -32603,
-        message: `Internal error: ${err.message}`
-      },
-      id: requestId ?? null
-    };
-    console.log(`[${new Date().toISOString()}] Response (internal error):`, JSON.stringify(errorResponse, null, 2));
-    return res.status(500).json(errorResponse);
-  }
-}
 
-app.post('/messages', handleJsonRpcRequest);
+  const transport = transports.get(sessionId);
+  await transport.handleRequest(req, res);
+});
+
+// Handle DELETE requests to /mcp for session cleanup
+app.delete('/mcp', async (req, res) => {
+  const sessionId = req.headers['mcp-session-id'];
+  
+  if (sessionId && transports.has(sessionId)) {
+    const transport = transports.get(sessionId);
+    await transport.close();
+    transports.delete(sessionId);
+    console.log(`[${new Date().toISOString()}] Session deleted: ${sessionId}`);
+    res.status(200).json({ message: 'Session closed' });
+  } else {
+    res.status(404).json({ error: 'Session not found' });
+  }
+});
 
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[${new Date().toISOString()}] Lebanon Zoning Lookup MCP Server v3.1.0 running on port ${PORT}`);
+  console.log(`[${new Date().toISOString()}] Lebanon Zoning Lookup MCP Server v3.2.0 running on port ${PORT}`);
   console.log(`[${new Date().toISOString()}] Using Zoning Layer ${ZONING_LAYER} and Address Layer ${ADDRESS_LAYER}`);
-  console.log(`[${new Date().toISOString()}] SSE endpoint: http://0.0.0.0:${PORT}/sse`);
+  console.log(`[${new Date().toISOString()}] Streamable HTTP endpoint: POST http://0.0.0.0:${PORT}/mcp`);
   console.log(`[${new Date().toISOString()}] Health check: http://0.0.0.0:${PORT}/health`);
   console.log(`[${new Date().toISOString()}] CORS enabled for all origins`);
-  console.log(`[${new Date().toISOString()}] Keep-alive ping interval: ${KEEP_ALIVE_INTERVAL}ms`);
 });
