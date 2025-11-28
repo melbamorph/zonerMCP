@@ -366,41 +366,205 @@ app.get('/sse', async (req, res) => {
   }
 });
 
-app.post('/messages', async (req, res) => {
+async function handleJsonRpcRequest(req, res) {
   const sessionId = req.query.sessionId;
-  console.log(`[${new Date().toISOString()}] POST /messages - Session: ${sessionId}`);
-  console.log(`[${new Date().toISOString()}] Request body:`, JSON.stringify(req.body));
+  const requestId = req.body?.id;
+  const method = req.body?.method;
   
-  const transport = transports.get(sessionId);
-  if (!transport) {
-    console.error(`[${new Date().toISOString()}] Invalid session: ${sessionId}. Active sessions: ${Array.from(transports.keys()).join(', ')}`);
-    return res.status(400).json({
+  console.log(`[${new Date().toISOString()}] ========== POST /messages ==========`);
+  console.log(`[${new Date().toISOString()}] Session: ${sessionId || 'stateless'}`);
+  console.log(`[${new Date().toISOString()}] Method: ${method}`);
+  console.log(`[${new Date().toISOString()}] Request ID: ${requestId}`);
+  console.log(`[${new Date().toISOString()}] Full Request Body:`, JSON.stringify(req.body, null, 2));
+  
+  if (!req.body || typeof req.body !== 'object') {
+    const errorResponse = {
       jsonrpc: '2.0',
       error: {
-        code: -32000,
-        message: 'Invalid session. Please establish SSE connection first.'
+        code: -32600,
+        message: 'Invalid Request: Request body must be a valid JSON object'
       },
       id: null
-    });
+    };
+    console.log(`[${new Date().toISOString()}] Response (parse error):`, JSON.stringify(errorResponse, null, 2));
+    return res.status(400).json(errorResponse);
+  }
+  
+  if (req.body.jsonrpc !== '2.0') {
+    const errorResponse = {
+      jsonrpc: '2.0',
+      error: {
+        code: -32600,
+        message: 'Invalid Request: Missing or invalid jsonrpc version (must be "2.0")'
+      },
+      id: requestId ?? null
+    };
+    console.log(`[${new Date().toISOString()}] Response (version error):`, JSON.stringify(errorResponse, null, 2));
+    return res.status(400).json(errorResponse);
+  }
+  
+  if (!method || typeof method !== 'string') {
+    const errorResponse = {
+      jsonrpc: '2.0',
+      error: {
+        code: -32600,
+        message: 'Invalid Request: Missing or invalid method'
+      },
+      id: requestId ?? null
+    };
+    console.log(`[${new Date().toISOString()}] Response (method error):`, JSON.stringify(errorResponse, null, 2));
+    return res.status(400).json(errorResponse);
   }
   
   try {
-    await transport.handlePostMessage(req, res, req.body);
-    console.log(`[${new Date().toISOString()}] Message handled for session: ${sessionId}`);
-  } catch (err) {
-    console.error(`[${new Date().toISOString()}] Error handling message for ${sessionId}:`, err.message);
-    if (!res.headersSent) {
-      res.status(500).json({
+    let result;
+    
+    if (method === 'tools/list') {
+      result = {
+        tools: [
+          {
+            name: "lookup_zoning_by_coordinates",
+            description: "Look up the zoning district for a location in Lebanon, NH using latitude and longitude coordinates. Returns the official zoning district from the Lebanon GIS Official Zoning layer.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                lat: {
+                  type: "number",
+                  description: "Latitude coordinate (between -90 and 90)"
+                },
+                lon: {
+                  type: "number",
+                  description: "Longitude coordinate (between -180 and 180)"
+                }
+              },
+              required: ["lat", "lon"]
+            }
+          },
+          {
+            name: "lookup_zoning_by_address",
+            description: "Look up the zoning district for a location in Lebanon, NH using a street address. Searches the Lebanon Master Address Table and returns the zoning district along with the full address and coordinates.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                address: {
+                  type: "string",
+                  description: "Street address or partial address to search for (e.g., '123 Main Street', 'Main St', or just '123')"
+                }
+              },
+              required: ["address"]
+            }
+          }
+        ]
+      };
+    } else if (method === 'tools/call') {
+      const params = req.body.params || {};
+      const toolName = params.name;
+      const toolArgs = params.arguments || {};
+      
+      console.log(`[${new Date().toISOString()}] Tool call: ${toolName}`);
+      console.log(`[${new Date().toISOString()}] Tool arguments:`, JSON.stringify(toolArgs, null, 2));
+      
+      try {
+        let toolResult;
+        
+        if (toolName === 'lookup_zoning_by_coordinates') {
+          const { lat, lon } = toolArgs;
+          toolResult = await lookupZoningByCoordinates(lat, lon);
+        } else if (toolName === 'lookup_zoning_by_address') {
+          const { address } = toolArgs;
+          toolResult = await lookupZoningByAddress(address);
+        } else {
+          throw new Error(`Unknown tool: ${toolName}`);
+        }
+        
+        result = {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(toolResult, null, 2)
+            }
+          ]
+        };
+      } catch (toolErr) {
+        result = {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify({
+                error: toolErr.message,
+                examples: {
+                  coordinates: { lat: 43.6426, lon: -72.2515 },
+                  address: '123 Main Street'
+                }
+              }, null, 2)
+            }
+          ],
+          isError: true
+        };
+      }
+    } else if (method === 'initialize') {
+      result = {
+        protocolVersion: '2024-11-05',
+        capabilities: {
+          tools: {}
+        },
+        serverInfo: {
+          name: 'lebanon-zoning-lookup',
+          version: '3.2.0'
+        }
+      };
+    } else if (method === 'notifications/initialized') {
+      if (requestId === undefined) {
+        console.log(`[${new Date().toISOString()}] Notification received (no response needed)`);
+        console.log(`[${new Date().toISOString()}] ========== END /messages ==========`);
+        return res.status(204).send();
+      }
+      const successResponse = {
+        jsonrpc: '2.0',
+        result: {},
+        id: requestId
+      };
+      console.log(`[${new Date().toISOString()}] Response (notification ack):`, JSON.stringify(successResponse, null, 2));
+      return res.json(successResponse);
+    } else {
+      const errorResponse = {
         jsonrpc: '2.0',
         error: {
-          code: -32603,
-          message: `Internal error: ${err.message}`
+          code: -32601,
+          message: `Method not found: ${method}`
         },
-        id: req.body?.id || null
-      });
+        id: requestId
+      };
+      console.log(`[${new Date().toISOString()}] Response (method not found):`, JSON.stringify(errorResponse, null, 2));
+      return res.status(404).json(errorResponse);
     }
+    
+    const successResponse = {
+      jsonrpc: '2.0',
+      result: result,
+      id: requestId
+    };
+    console.log(`[${new Date().toISOString()}] Response (success):`, JSON.stringify(successResponse, null, 2));
+    console.log(`[${new Date().toISOString()}] ========== END /messages ==========`);
+    return res.json(successResponse);
+    
+  } catch (err) {
+    console.error(`[${new Date().toISOString()}] Error handling message:`, err.message);
+    console.error(`[${new Date().toISOString()}] Stack:`, err.stack);
+    const errorResponse = {
+      jsonrpc: '2.0',
+      error: {
+        code: -32603,
+        message: `Internal error: ${err.message}`
+      },
+      id: requestId ?? null
+    };
+    console.log(`[${new Date().toISOString()}] Response (internal error):`, JSON.stringify(errorResponse, null, 2));
+    return res.status(500).json(errorResponse);
   }
-});
+}
+
+app.post('/messages', handleJsonRpcRequest);
 
 const PORT = process.env.PORT || 5000;
 
