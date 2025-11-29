@@ -30,7 +30,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that pr
 
 ### Deploy and Use with OpenAI Agents
 
-1. **Deploy to Replit, Railway, or your preferred platform**
+1. **Deploy to Replit**
 
 2. **Use with OpenAI Agents SDK:**
 ```python
@@ -217,24 +217,6 @@ Once connected, AI agents can answer questions like:
    - Port: 5000
 3. Click **Deploy**
 4. Use your deployment URL: `https://your-repl.repl.co/mcp`
-
-### Deploy to Railway
-
-```bash
-# Install Railway CLI
-npm install -g @railway/cli
-
-# Login and deploy
-railway login
-railway init
-railway up
-```
-
-### Deploy to Render/Heroku
-
-Standard Node.js deployment. Ensure:
-- Start command: `node mcp-server.js`
-- Port: Set via `PORT` environment variable (defaults to 5000)
 
 ## Configuration
 
