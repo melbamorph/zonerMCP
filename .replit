@@ -24,7 +24,7 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "node mcp-server.js"
+args = "npm start"
 waitForPort = 5000
 
 [deployment]
@@ -37,8 +37,4 @@ expertMode = true
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 46477
-externalPort = 3000
 

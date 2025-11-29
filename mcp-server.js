@@ -11,26 +11,25 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 
 // ============================================================================
-// SECTION 1: SERVER CONFIGURATION
+// CONFIGURATION (imported from config.js)
 // ============================================================================
-// Customize these values for your MCP server
+// All customizable values are centralized in config.js. When forking this
+// template, update config.js with your own values.
 
-const SERVER_NAME = "lebanon-zoning-lookup";
-const SERVER_VERSION = "3.2.0";
-const PORT = process.env.PORT || 5000;
+import {
+  SERVER_NAME,
+  SERVER_VERSION,
+  PORT,
+  BASE_URL,
+  ZONING_LAYER,
+  ADDRESS_LAYER,
+  DATA_SOURCES,
+  TOOL_DESCRIPTIONS,
+  ERROR_EXAMPLES,
+} from "./config.js";
 
 // ============================================================================
-// SECTION 2: YOUR CUSTOM CONFIGURATION
-// ============================================================================
-// Add your own configuration variables here. These can be overridden via
-// environment variables (see .env.example).
-
-const BASE_URL = process.env.FEATURE_URL || "https://services8.arcgis.com/IS3r9gAO1V8yuCqO/ArcGIS/rest/services/OpenGov_Map_Service_WFL1/FeatureServer";
-const ZONING_LAYER = process.env.ZONING_LAYER || "24";
-const ADDRESS_LAYER = process.env.ADDRESS_LAYER || "6";
-
-// ============================================================================
-// SECTION 3: YOUR BUSINESS LOGIC FUNCTIONS
+// SECTION 1: BUSINESS LOGIC FUNCTIONS
 // ============================================================================
 // Implement your tool functions here. These are the functions that do the
 // actual work when a tool is called. Each function should:
@@ -110,7 +109,7 @@ async function lookupZoningByCoordinates(lat, lon) {
       district,
       attributes: attrs,
       coordinates: { lat, lon },
-      source: "Lebanon Official Zoning Layer",
+      source: DATA_SOURCES.zoningLayer,
     };
   } catch (err) {
     if (err.name === 'AbortError') {
@@ -193,7 +192,7 @@ async function lookupZoningByAddress(address) {
       return {
         found: true,
         ...matches[0],
-        source: "Lebanon Master Address Table",
+        source: DATA_SOURCES.addressTable,
       };
     } else {
       return {
@@ -202,7 +201,7 @@ async function lookupZoningByAddress(address) {
         count: matches.length,
         matches: matches,
         message: `Found ${matches.length} matching addresses. Please be more specific.`,
-        source: "Lebanon Master Address Table",
+        source: DATA_SOURCES.addressTable,
       };
     }
   } catch (err) {
@@ -216,7 +215,7 @@ async function lookupZoningByAddress(address) {
 }
 
 // ============================================================================
-// SECTION 4: TOOL DEFINITIONS
+// SECTION 2: TOOL DEFINITIONS
 // ============================================================================
 // Define your MCP tools here. Each tool needs:
 // - name: A unique identifier (snake_case recommended)
@@ -228,8 +227,7 @@ async function lookupZoningByAddress(address) {
 const TOOLS = [
   {
     name: "lookup_zoning_by_coordinates",
-    description:
-      "Look up the zoning district for a location in Lebanon, NH using latitude and longitude coordinates. Returns the official zoning district from the Lebanon GIS Official Zoning layer.",
+    description: TOOL_DESCRIPTIONS.lookupByCoordinates,
     inputSchema: {
       type: "object",
       properties: {
@@ -247,8 +245,7 @@ const TOOLS = [
   },
   {
     name: "lookup_zoning_by_address",
-    description:
-      "Look up the zoning district for a location in Lebanon, NH using a street address. Searches the Lebanon Master Address Table and returns the zoning district along with the full address and coordinates. Returns multiple matches if the address is ambiguous.",
+    description: TOOL_DESCRIPTIONS.lookupByAddress,
     inputSchema: {
       type: "object",
       properties: {
@@ -271,13 +268,8 @@ const TOOL_HANDLERS = {
   },
 };
 
-const ERROR_EXAMPLES = {
-  coordinates: { lat: 43.6426, lon: -72.2515 },
-  address: "123 Main Street"
-};
-
 // ============================================================================
-// SECTION 5: MCP SERVER BOILERPLATE (Rarely needs modification)
+// SECTION 3: MCP SERVER BOILERPLATE (Rarely needs modification)
 // ============================================================================
 // The code below handles the MCP protocol, session management, and HTTP
 // transport. You typically don't need to modify this unless you're adding

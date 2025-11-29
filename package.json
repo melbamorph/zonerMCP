@@ -1,7 +1,7 @@
 {
-  "name": "lebanon-zoning-lookup",
+  "name": "mcp-server-template",
   "version": "3.2.0",
-  "description": "MCP server for Lebanon, NH zoning district lookup - exposes AI tool for querying ArcGIS FeatureServer",
+  "description": "Minimal, reusable MCP server template for OpenAI Agent Builder and other AI platforms - customize for your own data sources",
   "type": "module",
   "main": "mcp-server.js",
   "scripts": {
@@ -11,13 +11,14 @@
   "keywords": [
     "mcp",
     "model-context-protocol",
-    "zoning",
+    "openai",
+    "agent-builder",
+    "ai-tool",
+    "template",
     "arcgis",
-    "lebanon",
-    "geospatial",
-    "ai-tool"
+    "geospatial"
   ],
-  "author": "",
+  "author": "Your Name <your.email@example.com>",
   "license": "ISC",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.21.1",
