@@ -12,6 +12,7 @@ This project provides a Model Context Protocol (MCP) server for Lebanon, NH, ena
 - Prefer Streamable HTTP transport over SSE for better compatibility with OpenAI Agent Builder
 
 ## Recent Changes
+- **2025-11-29**: Added stateless client support for OpenAI Agent Builder. The server now auto-initializes sessions when non-initialize requests arrive without a valid session, enabling Agent Builder to send tool calls directly without the handshake. Fixed CORS to include `mcp-protocol-version` in allowed headers.
 - **2025-11-28**: Migrated from SSE transport to Streamable HTTP transport (`POST /mcp`) for better compatibility with OpenAI Responses API and Agent Builder. Removed `/sse` and `/messages` endpoints. Updated server version to 3.2.0.
 
 ## System Architecture
