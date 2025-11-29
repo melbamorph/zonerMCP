@@ -33,8 +33,8 @@ When forking this template, update the following:
 ### Required Changes
 
 - [ ] **`config.js`** - Update all values:
-  - `SERVER_NAME` - Your project name (e.g., "springfield-permits")
-  - `LOCATION_NAME` - Your municipality/region (e.g., "Springfield, IL")
+  - `SERVER_NAME` - Your project name (e.g., "anytown-permits")
+  - `LOCATION_NAME` - Your municipality/region (e.g., "Anytown, USA")
   - `DATA_SOURCES` - Your data source names
   - `TOOL_DESCRIPTIONS` - Descriptions for your tools
   - `ERROR_EXAMPLES` - Example values for your location
