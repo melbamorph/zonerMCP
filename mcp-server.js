@@ -319,14 +319,44 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Helper to create and initialize a new session, returning the transport
+async function createAndInitializeSession() {
+  const sessionServer = createMcpServer();
+  let resolveSessionId;
+  const sessionIdPromise = new Promise((resolve) => { resolveSessionId = resolve; });
+
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: () => randomUUID(),
+    onsessioninitialized: (newSessionId) => {
+      console.log(`[${new Date().toISOString()}] Session auto-initialized: ${newSessionId}`);
+      transports.set(newSessionId, transport);
+      resolveSessionId(newSessionId);
+    }
+  });
+
+  sessionServer.onclose = async () => {
+    const sid = transport.sessionId;
+    if (sid && transports.has(sid)) {
+      console.log(`[${new Date().toISOString()}] Transport closed for session ${sid}`);
+      transports.delete(sid);
+    }
+  };
+
+  await sessionServer.connect(transport);
+  
+  return { transport, sessionServer, sessionIdPromise };
+}
+
 // Streamable HTTP MCP endpoint
 app.post('/mcp', async (req, res) => {
   const clientInfo = req.headers['user-agent'] || 'unknown';
   const sessionId = req.headers['mcp-session-id'];
+  const method = req.body?.method;
   
   console.log(`[${new Date().toISOString()}] ========== POST /mcp ==========`);
   console.log(`[${new Date().toISOString()}] Client: ${clientInfo}`);
-  console.log(`[${new Date().toISOString()}] Session ID: ${sessionId || 'new session'}`);
+  console.log(`[${new Date().toISOString()}] Session ID: ${sessionId || 'none'}`);
+  console.log(`[${new Date().toISOString()}] Method: ${method}`);
   console.log(`[${new Date().toISOString()}] Request body:`, JSON.stringify(req.body, null, 2));
 
   try {
@@ -337,46 +367,71 @@ app.post('/mcp', async (req, res) => {
       return;
     }
     
-    // New session - only allowed if no session ID provided (initialization request)
-    if (!sessionId) {
-      // Create a new MCP server instance for this session
-      const sessionServer = createMcpServer();
-
-      // Create new transport with session initialization callback
-      const transport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: () => randomUUID(),
-        onsessioninitialized: (newSessionId) => {
-          console.log(`[${new Date().toISOString()}] Session initialized: ${newSessionId}`);
-          transports.set(newSessionId, transport);
-        }
-      });
-
-      // Set up cleanup when server closes
-      sessionServer.onclose = async () => {
-        const sid = transport.sessionId;
-        if (sid && transports.has(sid)) {
-          console.log(`[${new Date().toISOString()}] Transport closed for session ${sid}`);
-          transports.delete(sid);
-        }
-      };
-
-      // Connect the transport to the MCP server BEFORE handling the request
-      await sessionServer.connect(transport);
-
-      // Handle the request
+    // No valid session - we need to create one
+    // If this is an initialize request, just process it normally
+    if (method === 'initialize') {
+      console.log(`[${new Date().toISOString()}] Processing initialize request`);
+      const { transport } = await createAndInitializeSession();
       await transport.handleRequest(req, res, req.body);
       return;
     }
     
-    // Invalid request - has session ID but no matching transport
-    res.status(400).json({
+    // Non-initialize request without valid session - auto-initialize first
+    // This supports stateless clients like OpenAI Agent Builder
+    console.log(`[${new Date().toISOString()}] Auto-initializing for stateless client`);
+    
+    const { transport, sessionIdPromise } = await createAndInitializeSession();
+    
+    // Synthesize an initialize request to establish the session
+    const initRequest = {
       jsonrpc: '2.0',
-      error: {
-        code: -32000,
-        message: 'Bad Request: No valid session ID provided',
+      method: 'initialize',
+      params: {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'auto-init', version: '1.0.0' }
       },
-      id: req.body?.id ?? null
-    });
+      id: `auto-init-${Date.now()}`
+    };
+    
+    // Create a mock response to capture the initialize response
+    const { Writable, PassThrough } = await import('node:stream');
+    const mockRes = new PassThrough();
+    mockRes.setHeader = () => {};
+    mockRes.writeHead = () => {};
+    mockRes.status = () => mockRes;
+    mockRes.json = () => {};
+    mockRes.end = () => {};
+    
+    // Create mock request for initialize
+    const mockReq = {
+      method: 'POST',
+      headers: { ...req.headers },
+      body: initRequest
+    };
+    delete mockReq.headers['mcp-session-id'];
+    
+    // Process the initialize request internally
+    await transport.handleRequest(mockReq, mockRes, initRequest);
+    
+    // Wait for session to be initialized
+    const newSessionId = await sessionIdPromise;
+    console.log(`[${new Date().toISOString()}] Auto-init complete, session: ${newSessionId}`);
+    
+    // Now process the original request with the initialized session
+    // Set the session ID header on the response so client knows which session to use
+    res.setHeader('mcp-session-id', newSessionId);
+    
+    // Create a modified request with the session ID header set
+    const modifiedReq = {
+      ...req,
+      headers: {
+        ...req.headers,
+        'mcp-session-id': newSessionId
+      }
+    };
+    
+    await transport.handleRequest(modifiedReq, res, req.body);
     
   } catch (err) {
     console.error(`[${new Date().toISOString()}] Error handling /mcp request:`, err.message);
@@ -400,12 +455,27 @@ app.get('/mcp', async (req, res) => {
   console.log(`[${new Date().toISOString()}] ========== GET /mcp ==========`);
   const sessionId = req.headers['mcp-session-id'];
   
-  if (!sessionId || !transports.has(sessionId)) {
+  // If no session ID, return server info (helpful for discovery)
+  if (!sessionId) {
+    console.log(`[${new Date().toISOString()}] GET without session - returning server info`);
+    res.json({
+      name: 'lebanon-zoning-lookup',
+      version: '3.2.0',
+      protocol: 'mcp',
+      protocolVersion: '2024-11-05',
+      transport: 'streamable-http',
+      description: 'Lebanon NH Zoning Lookup MCP Server - use POST /mcp with initialize method to start a session',
+      tools: ['lookup_zoning_by_address', 'lookup_zoning_by_coordinates']
+    });
+    return;
+  }
+  
+  if (!transports.has(sessionId)) {
     res.status(400).json({
       jsonrpc: '2.0',
       error: {
         code: -32000,
-        message: 'Bad Request: No valid session ID provided',
+        message: 'Bad Request: Session not found or expired',
       },
       id: null
     });
