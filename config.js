@@ -19,11 +19,19 @@ export const SERVER_VERSION = "3.2.0";
 // ----------------------------------------------------------------------------
 // DATA SOURCE CONFIGURATION
 // ----------------------------------------------------------------------------
-// Configure your ArcGIS FeatureServer or REST API endpoints
-// Environment variables take precedence over these defaults
+// The data source URL must be configured via the ARCGIS_BASE_URL secret.
+// This keeps the endpoint URL private and out of the public codebase.
+// 
+// To set up: Add ARCGIS_BASE_URL to your Replit Secrets with your 
+// FeatureServer URL (e.g., https://services.arcgis.com/.../FeatureServer)
 
-export const BASE_URL = process.env.FEATURE_URL || 
-  "https://services8.arcgis.com/IS3r9gAO1V8yuCqO/ArcGIS/rest/services/OpenGov_Map_Service_WFL1/FeatureServer";
+export const BASE_URL = process.env.ARCGIS_BASE_URL;
+
+if (!BASE_URL) {
+  console.error("ERROR: ARCGIS_BASE_URL secret is required but not set.");
+  console.error("Please add this secret in Replit's Secrets tab.");
+  process.exit(1);
+}
 
 export const ZONING_LAYER = process.env.ZONING_LAYER || "24";
 export const ADDRESS_LAYER = process.env.ADDRESS_LAYER || "6";

@@ -39,11 +39,14 @@ README.md          # Documentation with customization checklist
 
 **config.js** - All customizable values:
 - SERVER_NAME, SERVER_VERSION - Server identity
-- BASE_URL, ZONING_LAYER, ADDRESS_LAYER - Data source endpoints
+- ZONING_LAYER, ADDRESS_LAYER - Data source layer IDs
 - LOCATION_NAME - Municipality/region name
 - DATA_SOURCES - Source labels for responses
 - TOOL_DESCRIPTIONS - AI-facing tool descriptions
 - ERROR_EXAMPLES - Example values for error recovery
+
+**Required Secrets** (set in Replit Secrets tab):
+- ARCGIS_BASE_URL - The FeatureServer endpoint URL (kept private, not in code)
 
 **mcp-server.js** - Server implementation:
 1. **Configuration imports** - Loads from config.js
@@ -54,11 +57,11 @@ README.md          # Documentation with customization checklist
 ## Customization Guide
 
 ### Forking This Template
-1. Update ALL values in `config.js`
-2. Modify business logic functions in `mcp-server.js`
-3. Update tool definitions (TOOLS array and TOOL_HANDLERS)
-4. Update `package.json` name, description, author
-5. Copy `.env.example` to `.env` and set your values
+1. Add the `ARCGIS_BASE_URL` secret with your FeatureServer URL
+2. Update ALL values in `config.js`
+3. Modify business logic functions in `mcp-server.js`
+4. Update tool definitions (TOOLS array and TOOL_HANDLERS)
+5. Update `package.json` name, description, author
 
 ### Adding a New Tool
 1. Add configuration variables in `config.js`
@@ -77,6 +80,8 @@ README.md          # Documentation with customization checklist
 - `cors` - Cross-origin request handling
 
 ## Recent Changes
+- 2025-11-29: Moved ARCGIS_BASE_URL to secrets for privacy (removed hardcoded URL from codebase)
+- 2025-11-29: Updated README and documentation to reflect secret requirement
 - 2025-11-29: Extracted configuration to separate config.js file
 - 2025-11-29: Added customization checklist to README
 - 2025-11-29: Added badges and improved documentation

@@ -38,7 +38,10 @@ When forking this template, update the following:
   - `DATA_SOURCES` - Your data source names
   - `TOOL_DESCRIPTIONS` - Descriptions for your tools
   - `ERROR_EXAMPLES` - Example values for your location
-  - `BASE_URL`, `ZONING_LAYER`, `ADDRESS_LAYER` - Your API endpoints
+  - `ZONING_LAYER`, `ADDRESS_LAYER` - Your layer IDs
+
+- [ ] **Secrets** - Add required secrets:
+  - `ARCGIS_BASE_URL` - Your FeatureServer endpoint URL (see Environment Variables section)
 
 - [ ] **`package.json`** - Update:
   - `name` - Your package name
@@ -158,15 +161,28 @@ When an AI calls your tool, it receives a JSON response:
 }
 ```
 
-## Environment Variables
+## Environment Variables & Secrets
 
-Copy `.env.example` to `.env` and customize:
+### Required Secret
+
+This server requires the data source URL to be stored as a **secret** (not in code):
+
+| Secret Name | Description |
+|-------------|-------------|
+| `ARCGIS_BASE_URL` | Your FeatureServer endpoint URL (required) |
+
+**On Replit:** Add this in the Secrets tab (padlock icon in the Tools panel).
+
+**Why a secret?** While the endpoint may be publicly accessible, storing it as a secret keeps it out of the public codebase and prevents unintended discovery.
+
+### Optional Environment Variables
+
+These can be set as regular environment variables or secrets:
 
 ```bash
-PORT=5000                    # Server port
-FEATURE_URL=https://...      # Your data source URL
-ZONING_LAYER=24              # Your layer ID
-ADDRESS_LAYER=6              # Your layer ID
+PORT=5000                    # Server port (default: 5000)
+ZONING_LAYER=24              # Your zoning layer ID
+ADDRESS_LAYER=6              # Your address layer ID
 ```
 
 ## Features
