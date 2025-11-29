@@ -33,7 +33,7 @@ export const ADDRESS_LAYER = process.env.ADDRESS_LAYER || "6";
 // ----------------------------------------------------------------------------
 // Update these to match your municipality/region
 
-export const LOCATION_NAME = "Lebanon, NH";  // e.g., "Springfield, IL", "Portland, OR"
+export const LOCATION_NAME = "Lebanon, NH";  // e.g., "Anytown, USA", "Portland, OR"
 
 export const DATA_SOURCES = {
   zoningLayer: "Lebanon Official Zoning Layer",      // Your zoning data source name
