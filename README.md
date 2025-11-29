@@ -106,7 +106,7 @@ Search for properties by street address (supports partial matching).
 **Input:**
 ```json
 {
-  "address": "14 Amsden St"
+  "address": "51 N. Park St"
 }
 ```
 
@@ -114,24 +114,23 @@ Search for properties by street address (supports partial matching).
 ```json
 {
   "found": true,
-  "address": "14 AMSDEN ST",
-  "district": "R3",
+  "address": "51 N PARK ST",
+  "district": "CBD",
   "coordinates": {
-    "lat": 43.64703254,
-    "lon": -72.25890275
+    "lat": 43.64215,
+    "lon": -72.25178
   },
   "allAttributes": {
-    "OBJECTID": 123,
-    "AddNo_Full": "14",
-    "StNam_Full": "AMSDEN ST",
+    "OBJECTID": 456,
+    "AddNo_Full": "51",
+    "StNam_Full": "N PARK ST",
     "County": "Grafton",
     "Inc_Muni": "Lebanon",
     "State": "NH",
     "Zip_Code": "03766",
-    "Parcel_ID": "0077 0048 00000",
-    "d_gis_lot_size": 0.28,
-    "d_gis_zone": "R3",
-    "d_gis_owner1": "RANCOURT, WILLIAM",
+    "Parcel_ID": "0089 0012 00000",
+    "d_gis_lot_size": 0.15,
+    "d_gis_zone": "CBD",
     "Sewer": "Municipal Sewer",
     "Water": "Municipal Water"
   },
@@ -198,13 +197,13 @@ Once connected, AI agents can answer questions like:
 - "Look up the zoning for latitude 43.64 and longitude -72.25"
 
 **Address-based:**
-- "What's the zoning for 14 Amsden St in Lebanon, NH?"
+- "What's the zoning for 51 N. Park St in Lebanon, NH?"
 - "Find all properties on Main Street"
 - "What's the lot size for 81 Crafts Hill Road?"
 - "Who owns the property at 123 Maple Street?"
 
 **Property details:**
-- "Show me all property information for 14 Amsden St"
+- "Show me all property information for 51 N. Park St"
 - "What utilities are available at this address?"
 - "What's the parcel ID for this property?"
 
