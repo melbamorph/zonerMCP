@@ -10,9 +10,32 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
+// ============================================================================
+// SECTION 1: SERVER CONFIGURATION
+// ============================================================================
+// Customize these values for your MCP server
+
+const SERVER_NAME = "lebanon-zoning-lookup";
+const SERVER_VERSION = "3.2.0";
+const PORT = process.env.PORT || 5000;
+
+// ============================================================================
+// SECTION 2: YOUR CUSTOM CONFIGURATION
+// ============================================================================
+// Add your own configuration variables here
+
 const BASE_URL = "https://services8.arcgis.com/IS3r9gAO1V8yuCqO/ArcGIS/rest/services/OpenGov_Map_Service_WFL1/FeatureServer";
 const ZONING_LAYER = process.env.ZONING_LAYER || "24";
 const ADDRESS_LAYER = process.env.ADDRESS_LAYER || "6";
+
+// ============================================================================
+// SECTION 3: YOUR BUSINESS LOGIC FUNCTIONS
+// ============================================================================
+// Implement your tool functions here. These are the functions that do the
+// actual work when a tool is called. Each function should:
+// - Accept the parameters defined in your tool's inputSchema
+// - Return a result object (will be JSON stringified for the AI)
+// - Throw an Error with a helpful message if something goes wrong
 
 async function lookupZoningByCoordinates(lat, lon) {
   if (typeof lat !== "number" || typeof lon !== "number") {
@@ -191,12 +214,79 @@ async function lookupZoningByAddress(address) {
   }
 }
 
-// Helper function to create and configure an MCP server instance
+// ============================================================================
+// SECTION 4: TOOL DEFINITIONS
+// ============================================================================
+// Define your MCP tools here. Each tool needs:
+// - name: A unique identifier (snake_case recommended)
+// - description: What the tool does (helps AI decide when to use it)
+// - inputSchema: JSON Schema defining the parameters
+//
+// Then add the tool to the TOOL_HANDLERS map below to connect it to your function.
+
+const TOOLS = [
+  {
+    name: "lookup_zoning_by_coordinates",
+    description:
+      "Look up the zoning district for a location in Lebanon, NH using latitude and longitude coordinates. Returns the official zoning district from the Lebanon GIS Official Zoning layer.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        lat: {
+          type: "number",
+          description: "Latitude coordinate (between -90 and 90)",
+        },
+        lon: {
+          type: "number",
+          description: "Longitude coordinate (between -180 and 180)",
+        },
+      },
+      required: ["lat", "lon"],
+    },
+  },
+  {
+    name: "lookup_zoning_by_address",
+    description:
+      "Look up the zoning district for a location in Lebanon, NH using a street address. Searches the Lebanon Master Address Table and returns the zoning district along with the full address and coordinates. Returns multiple matches if the address is ambiguous.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        address: {
+          type: "string",
+          description: "Street address or partial address to search for (e.g., '123 Main Street', 'Main St', or just '123')",
+        },
+      },
+      required: ["address"],
+    },
+  },
+];
+
+const TOOL_HANDLERS = {
+  lookup_zoning_by_coordinates: async (args) => {
+    return await lookupZoningByCoordinates(args.lat, args.lon);
+  },
+  lookup_zoning_by_address: async (args) => {
+    return await lookupZoningByAddress(args.address);
+  },
+};
+
+const ERROR_EXAMPLES = {
+  coordinates: { lat: 43.6426, lon: -72.2515 },
+  address: "123 Main Street"
+};
+
+// ============================================================================
+// SECTION 5: MCP SERVER BOILERPLATE (Rarely needs modification)
+// ============================================================================
+// The code below handles the MCP protocol, session management, and HTTP
+// transport. You typically don't need to modify this unless you're adding
+// advanced features like authentication or custom middleware.
+
 function createMcpServer() {
   const mcpServer = new Server(
     {
-      name: "lebanon-zoning-lookup",
-      version: "3.2.0",
+      name: SERVER_NAME,
+      version: SERVER_VERSION,
     },
     {
       capabilities: {
@@ -206,62 +296,19 @@ function createMcpServer() {
   );
 
   mcpServer.setRequestHandler(ListToolsRequestSchema, async () => {
-    return {
-      tools: [
-        {
-          name: "lookup_zoning_by_coordinates",
-          description:
-            "Look up the zoning district for a location in Lebanon, NH using latitude and longitude coordinates. Returns the official zoning district from the Lebanon GIS Official Zoning layer.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              lat: {
-                type: "number",
-                description: "Latitude coordinate (between -90 and 90)",
-              },
-              lon: {
-                type: "number",
-                description: "Longitude coordinate (between -180 and 180)",
-              },
-            },
-            required: ["lat", "lon"],
-          },
-        },
-        {
-          name: "lookup_zoning_by_address",
-          description:
-            "Look up the zoning district for a location in Lebanon, NH using a street address. Searches the Lebanon Master Address Table and returns the zoning district along with the full address and coordinates. Returns multiple matches if the address is ambiguous.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              address: {
-                type: "string",
-                description: "Street address or partial address to search for (e.g., '123 Main Street', 'Main St', or just '123')",
-              },
-            },
-            required: ["address"],
-          },
-        },
-      ],
-    };
+    return { tools: TOOLS };
   });
 
   mcpServer.setRequestHandler(CallToolRequestSchema, async (request) => {
     const toolName = request.params.name;
+    const handler = TOOL_HANDLERS[toolName];
+
+    if (!handler) {
+      throw new Error(`Unknown tool: ${toolName}`);
+    }
 
     try {
-      let result;
-
-      if (toolName === "lookup_zoning_by_coordinates") {
-        const { lat, lon } = request.params.arguments;
-        result = await lookupZoningByCoordinates(lat, lon);
-      } else if (toolName === "lookup_zoning_by_address") {
-        const { address } = request.params.arguments;
-        result = await lookupZoningByAddress(address);
-      } else {
-        throw new Error(`Unknown tool: ${toolName}`);
-      }
-
+      const result = await handler(request.params.arguments);
       return {
         content: [
           {
@@ -277,10 +324,7 @@ function createMcpServer() {
             type: "text",
             text: JSON.stringify({
               error: err.message,
-              examples: {
-                coordinates: { lat: 43.6426, lon: -72.2515 },
-                address: "123 Main Street"
-              },
+              examples: ERROR_EXAMPLES,
             }, null, 2),
           },
         ],
@@ -294,7 +338,6 @@ function createMcpServer() {
 
 const app = express();
 
-// Enable CORS for all origins (required for OpenAI agent connections and MCP Inspector)
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
@@ -307,19 +350,17 @@ app.use(cors({
 
 app.use(express.json());
 
-// Store transports by session ID for stateful connections
 const transports = new Map();
 
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
-    version: '3.2.0', 
+    version: SERVER_VERSION, 
     activeConnections: transports.size,
     timestamp: new Date().toISOString()
   });
 });
 
-// Helper to create and initialize a new session, returning the transport
 async function createAndInitializeSession() {
   const sessionServer = createMcpServer();
   let resolveSessionId;
@@ -328,7 +369,7 @@ async function createAndInitializeSession() {
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => randomUUID(),
     onsessioninitialized: (newSessionId) => {
-      console.log(`[${new Date().toISOString()}] Session auto-initialized: ${newSessionId}`);
+      console.log(`[${new Date().toISOString()}] Session initialized: ${newSessionId}`);
       transports.set(newSessionId, transport);
       resolveSessionId(newSessionId);
     }
@@ -337,7 +378,7 @@ async function createAndInitializeSession() {
   sessionServer.onclose = async () => {
     const sid = transport.sessionId;
     if (sid && transports.has(sid)) {
-      console.log(`[${new Date().toISOString()}] Transport closed for session ${sid}`);
+      console.log(`[${new Date().toISOString()}] Session closed: ${sid}`);
       transports.delete(sid);
     }
   };
@@ -347,42 +388,29 @@ async function createAndInitializeSession() {
   return { transport, sessionServer, sessionIdPromise };
 }
 
-// Streamable HTTP MCP endpoint
 app.post('/mcp', async (req, res) => {
-  const clientInfo = req.headers['user-agent'] || 'unknown';
   const sessionId = req.headers['mcp-session-id'];
   const method = req.body?.method;
   
-  console.log(`[${new Date().toISOString()}] ========== POST /mcp ==========`);
-  console.log(`[${new Date().toISOString()}] Client: ${clientInfo}`);
-  console.log(`[${new Date().toISOString()}] Session ID: ${sessionId || 'none'}`);
-  console.log(`[${new Date().toISOString()}] Method: ${method}`);
-  console.log(`[${new Date().toISOString()}] Request body:`, JSON.stringify(req.body, null, 2));
+  console.log(`[${new Date().toISOString()}] POST /mcp - Method: ${method}, Session: ${sessionId || 'none'}`);
 
   try {
-    // Check if this is an existing session
     if (sessionId && transports.has(sessionId)) {
       const transport = transports.get(sessionId);
       await transport.handleRequest(req, res, req.body);
       return;
     }
     
-    // No valid session - we need to create one
-    // If this is an initialize request, just process it normally
     if (method === 'initialize') {
-      console.log(`[${new Date().toISOString()}] Processing initialize request`);
       const { transport } = await createAndInitializeSession();
       await transport.handleRequest(req, res, req.body);
       return;
     }
     
-    // Non-initialize request without valid session - auto-initialize first
-    // This supports stateless clients like OpenAI Agent Builder
-    console.log(`[${new Date().toISOString()}] Auto-initializing for stateless client`);
+    console.log(`[${new Date().toISOString()}] Auto-initializing session for stateless client`);
     
     const { transport, sessionIdPromise } = await createAndInitializeSession();
     
-    // Synthesize an initialize request to establish the session
     const initRequest = {
       jsonrpc: '2.0',
       method: 'initialize',
@@ -394,8 +422,7 @@ app.post('/mcp', async (req, res) => {
       id: `auto-init-${Date.now()}`
     };
     
-    // Create a mock response to capture the initialize response
-    const { Writable, PassThrough } = await import('node:stream');
+    const { PassThrough } = await import('node:stream');
     const mockRes = new PassThrough();
     mockRes.setHeader = () => {};
     mockRes.writeHead = () => {};
@@ -403,7 +430,6 @@ app.post('/mcp', async (req, res) => {
     mockRes.json = () => {};
     mockRes.end = () => {};
     
-    // Create mock request for initialize
     const mockReq = {
       method: 'POST',
       headers: { ...req.headers },
@@ -411,18 +437,11 @@ app.post('/mcp', async (req, res) => {
     };
     delete mockReq.headers['mcp-session-id'];
     
-    // Process the initialize request internally
     await transport.handleRequest(mockReq, mockRes, initRequest);
     
-    // Wait for session to be initialized
     const newSessionId = await sessionIdPromise;
-    console.log(`[${new Date().toISOString()}] Auto-init complete, session: ${newSessionId}`);
-    
-    // Now process the original request with the initialized session
-    // Set the session ID header on the response so client knows which session to use
     res.setHeader('mcp-session-id', newSessionId);
     
-    // Create a modified request with the session ID header set
     const modifiedReq = {
       ...req,
       headers: {
@@ -434,8 +453,7 @@ app.post('/mcp', async (req, res) => {
     await transport.handleRequest(modifiedReq, res, req.body);
     
   } catch (err) {
-    console.error(`[${new Date().toISOString()}] Error handling /mcp request:`, err.message);
-    console.error(`[${new Date().toISOString()}] Stack:`, err.stack);
+    console.error(`[${new Date().toISOString()}] Error:`, err.message);
     
     if (!res.headersSent) {
       res.status(500).json({
@@ -450,22 +468,18 @@ app.post('/mcp', async (req, res) => {
   }
 });
 
-// Handle GET requests to /mcp for SSE streams (for clients that need server-initiated messages)
 app.get('/mcp', async (req, res) => {
-  console.log(`[${new Date().toISOString()}] ========== GET /mcp ==========`);
   const sessionId = req.headers['mcp-session-id'];
   
-  // If no session ID, return server info (helpful for discovery)
   if (!sessionId) {
-    console.log(`[${new Date().toISOString()}] GET without session - returning server info`);
     res.json({
-      name: 'lebanon-zoning-lookup',
-      version: '3.2.0',
+      name: SERVER_NAME,
+      version: SERVER_VERSION,
       protocol: 'mcp',
       protocolVersion: '2024-11-05',
       transport: 'streamable-http',
-      description: 'Lebanon NH Zoning Lookup MCP Server - use POST /mcp with initialize method to start a session',
-      tools: ['lookup_zoning_by_address', 'lookup_zoning_by_coordinates']
+      description: `${SERVER_NAME} MCP Server - POST /mcp with initialize method to start`,
+      tools: TOOLS.map(t => t.name)
     });
     return;
   }
@@ -475,36 +489,26 @@ app.get('/mcp', async (req, res) => {
       jsonrpc: '2.0',
       error: {
         code: -32000,
-        message: 'Bad Request: Session not found or expired',
+        message: 'Session not found or expired',
       },
       id: null
     });
     return;
   }
 
-  const lastEventId = req.headers['last-event-id'];
-  if (lastEventId) {
-    console.log(`[${new Date().toISOString()}] Client reconnecting with Last-Event-ID: ${lastEventId}`);
-  } else {
-    console.log(`[${new Date().toISOString()}] Establishing SSE stream for session: ${sessionId}`);
-  }
-
   const transport = transports.get(sessionId);
   await transport.handleRequest(req, res);
 });
 
-// Handle DELETE requests to /mcp for session cleanup
 app.delete('/mcp', async (req, res) => {
   const sessionId = req.headers['mcp-session-id'];
-  console.log(`[${new Date().toISOString()}] ========== DELETE /mcp ==========`);
-  console.log(`[${new Date().toISOString()}] Session ID: ${sessionId}`);
   
   if (!sessionId || !transports.has(sessionId)) {
     res.status(400).json({
       jsonrpc: '2.0',
       error: {
         code: -32000,
-        message: 'Bad Request: No valid session ID provided',
+        message: 'No valid session ID provided',
       },
       id: null
     });
@@ -515,7 +519,7 @@ app.delete('/mcp', async (req, res) => {
     const transport = transports.get(sessionId);
     await transport.handleRequest(req, res);
   } catch (err) {
-    console.error(`[${new Date().toISOString()}] Error handling session termination:`, err.message);
+    console.error(`[${new Date().toISOString()}] Session termination error:`, err.message);
     if (!res.headersSent) {
       res.status(500).json({
         jsonrpc: '2.0',
@@ -529,12 +533,8 @@ app.delete('/mcp', async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 5000;
-
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[${new Date().toISOString()}] Lebanon Zoning Lookup MCP Server v3.2.0 running on port ${PORT}`);
-  console.log(`[${new Date().toISOString()}] Using Zoning Layer ${ZONING_LAYER} and Address Layer ${ADDRESS_LAYER}`);
-  console.log(`[${new Date().toISOString()}] Streamable HTTP endpoint: POST http://0.0.0.0:${PORT}/mcp`);
-  console.log(`[${new Date().toISOString()}] Health check: http://0.0.0.0:${PORT}/health`);
-  console.log(`[${new Date().toISOString()}] CORS enabled for all origins`);
+  console.log(`[${new Date().toISOString()}] ${SERVER_NAME} v${SERVER_VERSION} running on port ${PORT}`);
+  console.log(`[${new Date().toISOString()}] MCP endpoint: POST http://0.0.0.0:${PORT}/mcp`);
+  console.log(`[${new Date().toISOString()}] Health check: GET http://0.0.0.0:${PORT}/health`);
 });
