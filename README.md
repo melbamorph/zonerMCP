@@ -23,7 +23,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that pr
 - No rate limits or authentication needed
 
 🚀 **Remote Deployment**
-- **SSE/HTTP transport**: Deploy to cloud and connect with OpenAI Agents SDK
+- **Streamable HTTP transport**: Deploy to cloud and connect with OpenAI Agents SDK
 - Runs as a web service on port 5000
 
 ## Quick Start
@@ -34,9 +34,9 @@ A [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that pr
 
 2. **Use with OpenAI Agents SDK:**
 ```python
-from agents import Agent, MCPServerSse, Runner
+from agents import Agent, MCPServerStreamableHttp, Runner
 
-async with MCPServerSse(url="https://your-server.com/sse") as server:
+async with MCPServerStreamableHttp(url="https://your-server.com/mcp") as server:
     agent = Agent(name="Zoning Assistant", model="gpt-4", mcp_servers=[server])
     result = await Runner.run(agent, "What's the zoning for coordinates 43.6426, -72.2515?")
     print(result.final_output)
@@ -63,7 +63,7 @@ npm start
 ```
 
 The server runs as a web service on port 5000:
-- SSE endpoint: `http://localhost:5000/sse`
+- MCP endpoint: `http://localhost:5000/mcp`
 - Health check: `http://localhost:5000/health`
 
 ## Available Tools
@@ -145,10 +145,10 @@ Search for properties by street address (supports partial matching).
 
 ```python
 import asyncio
-from agents import Agent, MCPServerSse, Runner
+from agents import Agent, MCPServerStreamableHttp, Runner
 
 async def main():
-    async with MCPServerSse(url="https://your-deployment-url.com/sse") as server:
+    async with MCPServerStreamableHttp(url="https://your-deployment-url.com/mcp") as server:
         agent = Agent(
             name="Zoning Assistant",
             model="gpt-4",
@@ -179,7 +179,7 @@ response = client.responses.create(
         {
             "type": "mcp",
             "server_label": "lebanon_zoning",
-            "server_url": "https://your-deployment-url.com/sse",
+            "server_url": "https://your-deployment-url.com/mcp",
             "require_approval": "never"
         }
     ],
@@ -217,7 +217,7 @@ Once connected, AI agents can answer questions like:
    - Run command: `node mcp-server.js`
    - Port: 5000
 3. Click **Deploy**
-4. Use your deployment URL: `https://your-repl.repl.co/sse`
+4. Use your deployment URL: `https://your-repl.repl.co/mcp`
 
 ### Deploy to Railway
 
@@ -247,10 +247,11 @@ ZONING_LAYER=24             # ArcGIS layer for zoning data
 ADDRESS_LAYER=6             # ArcGIS layer for addresses
 ```
 
-## API Endpoints (HTTP Mode)
+## API Endpoints (Streamable HTTP)
 
-- `GET /sse` - Establishes SSE connection for MCP protocol
-- `POST /messages?sessionId=<id>` - Receives client messages
+- `POST /mcp` - Main MCP endpoint for tool calls and messages
+- `GET /mcp` - Establishes SSE stream for server-initiated messages (requires session ID header)
+- `DELETE /mcp` - Terminates an MCP session
 - `GET /health` - Server health check
 
 ## Lebanon Zoning Districts
@@ -269,7 +270,7 @@ Common zoning designations:
 
 ```
 lebanon-zoning-lookup/
-├── mcp-server.js           # Main MCP server (v3.0.0)
+├── mcp-server.js           # Main MCP server (v3.2.0)
 ├── test-mcp-client.js      # Test client for verification
 ├── package.json            # Project configuration
 ├── README.md              # This file
@@ -288,8 +289,8 @@ npm start
 # In another terminal, test health endpoint
 curl http://localhost:5000/health
 
-# Test SSE connection
-curl -N http://localhost:5000/sse
+# Test MCP endpoint (returns server info without session)
+curl http://localhost:5000/mcp
 ```
 
 ## Contributing
