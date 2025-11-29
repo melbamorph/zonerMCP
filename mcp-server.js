@@ -22,9 +22,10 @@ const PORT = process.env.PORT || 5000;
 // ============================================================================
 // SECTION 2: YOUR CUSTOM CONFIGURATION
 // ============================================================================
-// Add your own configuration variables here
+// Add your own configuration variables here. These can be overridden via
+// environment variables (see .env.example).
 
-const BASE_URL = "https://services8.arcgis.com/IS3r9gAO1V8yuCqO/ArcGIS/rest/services/OpenGov_Map_Service_WFL1/FeatureServer";
+const BASE_URL = process.env.FEATURE_URL || "https://services8.arcgis.com/IS3r9gAO1V8yuCqO/ArcGIS/rest/services/OpenGov_Map_Service_WFL1/FeatureServer";
 const ZONING_LAYER = process.env.ZONING_LAYER || "24";
 const ADDRESS_LAYER = process.env.ADDRESS_LAYER || "6";
 
