@@ -21,7 +21,7 @@
   "author": "Your Name <your.email@example.com>",
   "license": "ISC",
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.21.1",
+    "@modelcontextprotocol/sdk": "^1.24.0",
     "cors": "^2.8.5",
     "express": "^5.2.1"
   }
