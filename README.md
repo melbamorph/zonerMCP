@@ -11,9 +11,9 @@ A minimal, reusable [Model Context Protocol](https://modelcontextprotocol.io) (M
 This template is intentionally **minimal and UI-agnostic**. It provides only the MCP server infrastructure, allowing you to:
 
 - Connect it to **any AI interface** (OpenAI Agent Builder, Claude, custom UIs, etc.)
-- Build your own frontend or use existing AI chat interfaces
-- Focus on your business logic without UI constraints
-- Deploy as a standalone microservice
+- Build your own frontend or use existing AI chat interfaces.
+- Focus on your business logic without UI constraints.
+- Deploy as a standalone microservice.
 
 The template includes a working example (Lebanon, NH zoning lookup) that demonstrates the pattern. Replace it with your own data source and tools.
 
