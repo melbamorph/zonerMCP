@@ -1,4 +1,4 @@
-# MCP Server Template for OpenAI Agent Builder
+# MCP Server Template for OpenAI Agent Builder 
 
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 [![Node.js](https://img.shields.io/badge/Node.js-18+-green.svg)](https://nodejs.org/)
