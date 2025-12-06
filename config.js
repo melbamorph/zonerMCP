@@ -72,6 +72,33 @@ export const ERROR_EXAMPLES = {
 };
 
 // ----------------------------------------------------------------------------
+// PAYLOAD LIMITS
+// ----------------------------------------------------------------------------
+// Defense-in-depth: Limits enforced at HTTP layer and tool handler layer.
+// Adjust these values as needed for your use case.
+
+export const PAYLOAD_LIMITS = {
+  // HTTP/Gateway layer limit (applies to all requests)
+  httpBodySize: '32kb',
+  
+  // Tool-level field limits (adjust per tool as you add more)
+  fields: {
+    address: 500,           // Max characters for address string
+    layerId: 10,            // Max characters for layer ID
+    districtName: 100,      // Max characters for district/zone names
+    genericString: 1000,    // Default max for other string fields
+  },
+  
+  // Coordinate bounds (already enforced, documented here for clarity)
+  coordinates: {
+    latMin: -90,
+    latMax: 90,
+    lonMin: -180,
+    lonMax: 180,
+  },
+};
+
+// ----------------------------------------------------------------------------
 // SERVER PORT
 // ----------------------------------------------------------------------------
 

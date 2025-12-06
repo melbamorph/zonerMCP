@@ -26,7 +26,74 @@ import {
   DATA_SOURCES,
   TOOL_DESCRIPTIONS,
   ERROR_EXAMPLES,
+  PAYLOAD_LIMITS,
 } from "./config.js";
+
+// ============================================================================
+// PAYLOAD VALIDATION UTILITY
+// ============================================================================
+// Validates tool arguments against configured limits. Use this at the start
+// of each tool handler to enforce payload limits at the tool level.
+
+function validatePayload(args, schema) {
+  const errors = [];
+  
+  for (const [field, rules] of Object.entries(schema)) {
+    const value = args[field];
+    
+    if (value === undefined || value === null) continue;
+    
+    if (rules.type === 'string') {
+      if (typeof value !== 'string') {
+        errors.push(`${field} must be a string`);
+        continue;
+      }
+      const maxLen = rules.maxLength || PAYLOAD_LIMITS.fields.genericString;
+      if (value.length > maxLen) {
+        errors.push(`${field} exceeds maximum length of ${maxLen} characters`);
+      }
+    }
+    
+    if (rules.type === 'number') {
+      if (typeof value !== 'number' || !isFinite(value)) {
+        errors.push(`${field} must be a finite number`);
+        continue;
+      }
+      if (rules.min !== undefined && value < rules.min) {
+        errors.push(`${field} must be at least ${rules.min}`);
+      }
+      if (rules.max !== undefined && value > rules.max) {
+        errors.push(`${field} must be at most ${rules.max}`);
+      }
+    }
+  }
+  
+  if (errors.length > 0) {
+    throw new Error(`Payload validation failed: ${errors.join('; ')}`);
+  }
+}
+
+// Per-tool validation schemas
+const VALIDATION_SCHEMAS = {
+  lookup_zoning_by_coordinates: {
+    lat: { 
+      type: 'number', 
+      min: PAYLOAD_LIMITS.coordinates.latMin, 
+      max: PAYLOAD_LIMITS.coordinates.latMax 
+    },
+    lon: { 
+      type: 'number', 
+      min: PAYLOAD_LIMITS.coordinates.lonMin, 
+      max: PAYLOAD_LIMITS.coordinates.lonMax 
+    },
+  },
+  lookup_zoning_by_address: {
+    address: { 
+      type: 'string', 
+      maxLength: PAYLOAD_LIMITS.fields.address 
+    },
+  },
+};
 
 // ============================================================================
 // SECTION 1: BUSINESS LOGIC FUNCTIONS
@@ -261,9 +328,11 @@ const TOOLS = [
 
 const TOOL_HANDLERS = {
   lookup_zoning_by_coordinates: async (args) => {
+    validatePayload(args, VALIDATION_SCHEMAS.lookup_zoning_by_coordinates);
     return await lookupZoningByCoordinates(args.lat, args.lon);
   },
   lookup_zoning_by_address: async (args) => {
+    validatePayload(args, VALIDATION_SCHEMAS.lookup_zoning_by_address);
     return await lookupZoningByAddress(args.address);
   },
 };
@@ -341,7 +410,23 @@ app.use(cors({
   credentials: false
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: PAYLOAD_LIMITS.httpBodySize }));
+app.use(express.urlencoded({ extended: true, limit: PAYLOAD_LIMITS.httpBodySize }));
+
+app.use((err, req, res, next) => {
+  if (err.type === 'entity.too.large') {
+    console.log(`[${new Date().toISOString()}] Payload too large: ${req.ip || 'unknown'}`);
+    return res.status(413).json({
+      jsonrpc: '2.0',
+      error: {
+        code: -32600,
+        message: `Payload too large. Maximum size is ${PAYLOAD_LIMITS.httpBodySize}.`
+      },
+      id: null
+    });
+  }
+  next(err);
+});
 
 const transports = new Map();
 
